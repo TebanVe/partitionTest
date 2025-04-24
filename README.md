@@ -4,12 +4,29 @@ This project implements and analyzes methods for computing mass and stiffness ma
 
 ## Installation
 
-1.  **Prerequisites**: Ensure you have `pyenv` installed to manage Python versions. This project uses the Python version specified in the `.python-version` file.
+1.  **Prerequisites**: 
+    - Install `pyenv` to manage Python versions: [pyenv installation guide](https://github.com/pyenv/pyenv#installation)
+    - Install the `pyenv-virtualenv` plugin: [pyenv-virtualenv installation guide](https://github.com/pyenv/pyenv-virtualenv#installation)
+    - This project uses Python 3.9.7 as specified in the `.python-version` file
 
-2.  **Set up Python Environment**: Navigate to the project directory in your terminal. `pyenv` should automatically pick up the version from `.python-version`. If not, you might need to run `pyenv install $(cat .python-version)` first.
-
-3.  **Install Dependencies**: It's recommended to create an environment specific to this project within `pyenv`. Once your Python version is set, install the required libraries:
+2.  **Set up Python Environment**: 
     ```bash
+    # Install the required Python version if you don't have it
+    pyenv install 3.9.7
+    
+    # Create a virtualenv named 'partition' using Python 3.9.7
+    pyenv virtualenv 3.9.7 partition
+    
+    # Navigate to the project directory
+    cd /path/to/project
+    
+    # The .python-version file will automatically activate the 'partition' environment
+    # You should see '(partition)' in your prompt
+    ```
+
+3.  **Install Dependencies**: 
+    ```bash
+    # With the 'partition' environment active, install dependencies
     pip install -r requirements.txt
     ```
 
@@ -41,7 +58,7 @@ The project includes several examples in the `examples/` directory:
 -   `README.md`: This file.
 -   `requirements.txt`: Project dependencies for `pip`.
 -   `pyproject.toml`: Project configuration and build information.
--   `.python-version`: Specifies the Python version for `pyenv`.
+-   `.python-version`: Specifies the Python version (3.9.7) and environment name (partition) for automatic activation with pyenv-virtualenv.
 -   `.gitignore`: Specifies intentionally untracked files for Git.
 
 ## License
