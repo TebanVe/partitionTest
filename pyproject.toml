@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "manifold-partition"
+version = "0.1.0"
+description = "A tool for partitioning manifolds"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"} 
