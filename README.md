@@ -1,6 +1,6 @@
 # Torus Partitioning and Matrix Analysis
 
-This project implements and analyzes methods for computing mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It also includes tools for visualizing the torus mesh and the results of matrix analysis.
+This project implements and analyzes methods for computing mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and advanced optimization techniques for partition computation.
 
 ## Installation
 
@@ -32,6 +32,7 @@ This project implements and analyzes methods for computing mass and stiffness ma
 
 ## Usage
 
+### Matrix Analysis and Visualization
 The project includes several examples in the `examples/` directory:
 
 -   **Visualize the Torus Mesh**: Shows the 3D triangulation of the generated torus.
@@ -43,23 +44,62 @@ The project includes several examples in the `examples/` directory:
     ```bash
     python -m examples.test_matrix_construction
     ```
-    *(Note: The `optimization_example.py` is present but currently excluded from the main repository state).*
+
+### Partition Optimization
+New optimization capabilities have been added:
+
+-   **Multiple Start Optimization**: Tests the partition optimization with different random initializations:
+    ```bash
+    python examples/test_torus_optimization_multiple.py
+    ```
 
 ## Project Structure
 
+### Core Components
 -   `src/`: Contains the core implementation.
     -   `mesh.py`: `TorusMesh` class for generating torus meshes and implementing various matrix computation methods.
     -   `optimization.py`: Contains the `PartitionOptimizer` class (based on the paper, requires matrix computation).
-    -   `visualization.py`: `PartitionVisualizer` class for creating 3D and 2D visualizations (primarily for partition results).
+    -   `visualization.py`: `PartitionVisualizer` class for creating 3D and 2D visualizations.
+    -   `lbfgs_optimizer.py`: L-BFGS optimization with projection methods and detailed logging.
+    -   `projection_iterative.py`: Iterative projection onto partition constraints.
+
+### Examples and Tests
 -   `examples/`: Contains example scripts demonstrating project features.
     -   `mesh_visualization.py`: Shows the mesh triangulation.
     -   `test_matrix_construction.py`: Compares different matrix methods.
-    -   `optimization_example.py`: (Not currently tracked in git) Demonstrates partition optimization.
--   `README.md`: This file.
+    -   `test_torus_optimization_multiple.py`: Tests partition optimization with multiple starts.
+
+## Features
+
+### Matrix Analysis
+- Multiple matrix construction methods (Barycentric, Manifold, Stable, Stable FEM)
+- Eigenvalue analysis and comparison
+- Visualization of matrix properties
+
+### Mesh Generation and Visualization
+- Torus mesh generation with configurable parameters
+- 3D visualization of mesh structure
+- 2D parameter space visualization
+
+### Optimization and Partitioning
+- L-BFGS optimization with constraint handling
+- Multiple projection methods
+- Detailed optimization logging including:
+  - Energy tracking
+  - Gradient norm monitoring
+  - Projection distance tracking
+  - Constraint violation monitoring
+- Support for multiple random starts
+- Constraint handling:
+  - Partition constraints (sum to 1)
+  - Area preservation
+  - Non-negativity constraints
+
+## Configuration and Dependencies
 -   `requirements.txt`: Project dependencies for `pip`.
 -   `pyproject.toml`: Project configuration and build information.
--   `.python-version`: Specifies the Python version (3.9.7) and environment name (partition) for automatic activation with pyenv-virtualenv.
--   `.gitignore`: Specifies intentionally untracked files for Git.
+-   `.python-version`: Specifies Python version (3.9.7) and environment name.
+-   `.gitignore`: Specifies intentionally untracked files.
 
 ## License
 

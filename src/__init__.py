@@ -8,4 +8,6 @@ from .mesh import TorusMesh
 from .optimization import PartitionOptimizer
 from .visualization import PartitionVisualizer
 
-__all__ = ['TorusMesh', 'PartitionOptimizer', 'PartitionVisualizer'] 
+__all__ = ['TorusMesh', 'PartitionOptimizer', 'PartitionVisualizer']
+
+# This file makes the src directory a Python package 
