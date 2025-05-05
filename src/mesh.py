@@ -28,6 +28,9 @@ class TorusMesh:
         # Generate triangles
         self.triangles = self._generate_triangles()
         
+        # Compute triangle statistics
+        self._compute_triangle_statistics()
+        
         self.mass_matrix = None
         self.stiffness_matrix = None
         
@@ -649,4 +652,36 @@ class TorusMesh:
     
     def get_triangle_count(self):
         """Return the number of triangles in the mesh."""
-        return len(self.triangles) if self.triangles is not None else 0 
+        return len(self.triangles) if self.triangles is not None else 0
+    
+    def _compute_triangle_statistics(self):
+        """Compute and store statistics about the mesh triangles."""
+        # Total number of triangles
+        self.n_triangles = len(self.triangles)
+        
+        # Compute total surface area
+        self.total_area = 4 * np.pi**2 * self.R * self.r
+        
+        # Compute average triangle area
+        self.avg_triangle_area = self.total_area / self.n_triangles
+        
+        # Estimate average triangle side length
+        # For a triangle of area A, the side length of an equilateral triangle would be:
+        # a = sqrt(4A/sqrt(3))
+        self.avg_triangle_side = np.sqrt(4 * self.avg_triangle_area / np.sqrt(3))
+        
+        print("\nMesh Statistics:")
+        print(f"Number of vertices: {len(self.vertices)}")
+        print(f"Number of triangles: {self.n_triangles}")
+        print(f"Total surface area: {self.total_area:.6e}")
+        print(f"Average triangle area: {self.avg_triangle_area:.6e}")
+        print(f"Estimated average triangle side length: {self.avg_triangle_side:.6e}")
+        
+        # Store these values for easy access
+        self.mesh_statistics = {
+            'n_vertices': len(self.vertices),
+            'n_triangles': self.n_triangles,
+            'total_area': self.total_area,
+            'avg_triangle_area': self.avg_triangle_area,
+            'avg_triangle_side': self.avg_triangle_side
+        } 

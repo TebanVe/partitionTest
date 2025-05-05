@@ -53,6 +53,33 @@ New optimization capabilities have been added:
     python examples/test_torus_optimization_multiple.py
     ```
 
+### SLSQP-Based Partition Optimization (New)
+
+The repository now includes two new SLSQP-based optimizers for partitioning problems:
+
+- **SLSQPOptimizer**: Uses finite-difference gradients for optimization.
+- **SLSQPOptimizerAnalytic**: Uses analytic gradients for improved performance and accuracy.
+
+Both optimizers support detailed logging and plotting of optimization metrics (energy, gradient norm, constraint violation, step size) for in-depth analysis of the optimization process.
+
+#### Example Usage
+
+To test the SLSQP optimizers on a torus mesh, run:
+
+```bash
+python examples/test_slsqp.py           # Uses finite-difference gradients by default
+python examples/test_slsqp.py --analytic  # Uses analytic gradients
+```
+
+This will run the optimizer, print progress every 100 iterations, and generate a figure `slsqp_optimization_metrics.png` with four subplots showing the evolution of energy, gradient norm, constraint violation, and step size.
+
+#### Features
+- SLSQP optimization with both analytic and finite-difference gradients
+- Flexible constraint handling (partition, area, non-negativity)
+- Detailed logging and progress reporting
+- Automatic plotting of key optimization metrics
+- Easy switching between analytic and finite-difference modes
+
 ## Project Structure
 
 ### Core Components

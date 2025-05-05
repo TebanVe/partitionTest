@@ -58,11 +58,13 @@ class LBFGSOptimizer:
             'std_values': [],  # Track standard deviations during auto-tuning
             'pre_projection_energies': [],
             'post_projection_energies': [],
-            'energy_changes': [],
+            'projection_energy_changes': [],  # Energy change due to projection
+            'optimization_energy_changes': [], # Energy change between iterations
             'gradient_norms_pre_projection': [],
             'gradient_norms_post_projection': [],
             'projection_distances': [],
-            'warnings': []
+            'warnings': [],
+            'step_sizes': []  # New field for actual step sizes
         }
         
         # Auto-tuning parameters (only used if enable_lambda_tuning is True)
@@ -103,11 +105,13 @@ class LBFGSOptimizer:
             'std_values': [],
             'pre_projection_energies': [],
             'post_projection_energies': [],
-            'energy_changes': [],
+            'projection_energy_changes': [],
+            'optimization_energy_changes': [],
             'gradient_norms_pre_projection': [],
             'gradient_norms_post_projection': [],
             'projection_distances': [],
-            'warnings': []
+            'warnings': [],
+            'step_sizes': []  # New field for actual step sizes
         }
         
         # Log initial state before any projection
@@ -142,6 +146,7 @@ class LBFGSOptimizer:
         self.log['gradient_norms_pre_projection'].append(initial_grad_norm)
         self.log['gradient_norms_post_projection'].append(initial_grad_norm_after_projection)
         self.log['projection_distances'].append(projection_distance)
+        self.log['step_sizes'].append(0.0)  # No step for initial point
         
         # Define projected objective and gradient
         def objective(x):
@@ -156,7 +161,8 @@ class LBFGSOptimizer:
             x_proj = self.project(x)
             # Compute gradient at the projected point
             grad = self.compute_gradient(x_proj)
-            return grad
+            grad_proj = self.project(grad)  # <-- Project the gradient!
+            return grad_proj
 
         # Define callback for logging at each iteration
         def callback(xk):
@@ -168,10 +174,25 @@ class LBFGSOptimizer:
             current_grad_norm = np.linalg.norm(current_grad)
             projection_distance = np.linalg.norm(xk_proj - xk)
             pre_proj_energy = self.compute_energy(xk)
-            energy_change = current_energy - pre_proj_energy
+            
+            # Calculate projection effect (energy change due to projection)
+            proj_effect = current_energy - pre_proj_energy
+            
+            # Calculate optimization progress (energy change between iterations)
+            if current_iter > 0:
+                opt_progress = current_energy - self.log['energies'][-1]
+            else:
+                opt_progress = 0.0
 
-            if abs(energy_change) > 1.0:
-                self.log['warnings'].append(f"WARNING: Large energy change at iteration {current_iter}: {energy_change:.6f}")
+            # Calculate actual step size (from previous iterate to current)
+            if current_iter > 0:
+                prev_x = self.log.get('last_x', x0)
+                step_size = np.linalg.norm(xk - prev_x)
+            else:
+                step_size = 0.0
+
+            if abs(proj_effect) > 1.0:
+                self.log['warnings'].append(f"WARNING: Large projection effect at iteration {current_iter}: {proj_effect:.6f}")
 
             if current_iter > 1:
                 prev_energy = self.log['energies'][-1]
@@ -186,7 +207,10 @@ class LBFGSOptimizer:
             self.log['gradient_norms_pre_projection'].append(np.linalg.norm(self.compute_gradient(xk)))
             self.log['gradient_norms_post_projection'].append(current_grad_norm)
             self.log['projection_distances'].append(projection_distance)
-            self.log['energy_changes'].append(energy_change)
+            self.log['projection_energy_changes'].append(proj_effect)
+            self.log['optimization_energy_changes'].append(opt_progress)
+            self.log['step_sizes'].append(step_size)
+            self.log['last_x'] = xk  # Store current x for next iteration
 
         # Run optimization
         result = fmin_l_bfgs_b(
@@ -195,9 +219,9 @@ class LBFGSOptimizer:
             fprime=gradient,
             maxiter=max_iter,
             callback=callback,
-            factr=1e7,
+            factr=1e4,
             pgtol=1e-5,
-            maxls=50,
+            maxls=100,
             maxfun=15000
         )
 
@@ -210,11 +234,17 @@ class LBFGSOptimizer:
         final_projection_distance = np.linalg.norm(final_x_projected - final_x)
         final_energy_change = final_energy - self.compute_energy(final_x)
 
+        # Log stopping reason
+        stopping_reason = result[2].get('task', 'Unknown')
+        warnflag = result[2].get('warnflag', 0)
         self.log['warnings'].append(f"Final state - Energy: {final_energy:.6f}, Gradient norm: {final_grad_norm:.6f}")
         self.log['warnings'].append(f"After final projection - Energy: {final_energy:.6f}, " +
                                   f"Gradient norm: {final_grad_norm:.6f}, " +
                                   f"Projection distance: {final_projection_distance:.6f}, " +
                                   f"Energy change: {final_energy_change:.6f}")
+        self.log['warnings'].append(f"Stopping reason: {stopping_reason}")
+        if warnflag != 0:
+            self.log['warnings'].append(f"WARNING: LBFGS warnflag = {warnflag}")
 
         return final_x_projected, final_energy, result[2]
         
@@ -362,16 +392,44 @@ class LBFGSOptimizer:
         )
         return phi_proj.flatten()
 
+    def print_energy_summary(self):
+        """Print a summary of energy changes throughout the optimization process."""
+        if not self.log['energies']:
+            print("No optimization steps were logged!")
+            return
+            
+        print("\nEnergy Summary:")
+        print("=" * 80)
+        
+        # Initial state
+        initial_energy = self.log['pre_projection_energies'][0]
+        initial_energy_after_projection = self.log['post_projection_energies'][0]
+        
+        # Final state
+        final_energy_before_projection = self.log['pre_projection_energies'][-1]
+        final_energy_after_projection = self.log['post_projection_energies'][-1]
+        
+        print(f"Initial energy (before projection):        {initial_energy:12.6f}")
+        print(f"After initial projection:                  {initial_energy_after_projection:12.6f}")
+        print(f"Final energy before final projection:      {final_energy_before_projection:12.6f}")
+        print(f"Final energy after final projection:       {final_energy_after_projection:12.6f}")
+        print(f"Total energy decrease:                     {initial_energy - final_energy_after_projection:12.6f}")
+        print(f"Energy decrease during optimization:       {initial_energy_after_projection - final_energy_before_projection:12.6f}")
+        print(f"Energy decrease due to final projection:   {final_energy_before_projection - final_energy_after_projection:12.6f}")
+        
     def print_optimization_log(self):
         """Print detailed optimization log."""
         if not self.log['energies']:
             print("No optimization steps were logged!")
             return
             
+        # First print the energy summary
+        self.print_energy_summary()
+        
         print("\nDetailed Optimization Log:")
-        print("=" * 100)
-        print(f"{'Iter':>5} {'Energy':>12} {'Grad Norm':>12} {'Pre-Proj Energy':>15} {'Post-Proj Energy':>15} {'Energy Change':>15} {'Proj Distance':>15}")
-        print("-" * 100)
+        print("=" * 120)
+        print(f"{'Iter':>5} {'Energy':>12} {'Grad Norm':>12} {'Pre-Proj':>12} {'Post-Proj':>12} {'Proj Effect':>15} {'Opt Progress':>15} {'Step Size':>12} {'Proj Dist':>12}")
+        print("-" * 120)
         
         for i in range(len(self.log['iterations'])):
             iter_idx = self.log['iterations'][i]
@@ -383,10 +441,20 @@ class LBFGSOptimizer:
             grad_norm = self.log['gradient_norms'][i]
             pre_proj_energy = self.log['pre_projection_energies'][i]
             post_proj_energy = self.log['post_projection_energies'][i]
-            energy_change = self.log['energy_changes'][i] if i < len(self.log['energy_changes']) else 0.0
-            proj_distance = self.log['projection_distances'][i]
             
-            print(f"{iter_idx:5d} {energy:12.6f} {grad_norm:12.6f} {pre_proj_energy:15.6f} {post_proj_energy:15.6f} {energy_change:15.6f} {proj_distance:15.6f}")
+            # Calculate projection effect (energy change due to projection)
+            proj_effect = post_proj_energy - pre_proj_energy
+            
+            # Calculate optimization progress (energy change between iterations)
+            if i > 0:
+                opt_progress = energy - self.log['energies'][i-1]
+            else:
+                opt_progress = 0.0
+            
+            proj_distance = self.log['projection_distances'][i]
+            step_size = self.log['step_sizes'][i]
+            
+            print(f"{iter_idx:5d} {energy:12.6f} {grad_norm:12.6f} {pre_proj_energy:12.6f} {post_proj_energy:12.6f} {proj_effect:15.6f} {opt_progress:15.6f} {step_size:12.6f} {proj_distance:12.6f}")
         
         print("\nWarnings and Notable Events:")
         print("=" * 100)
