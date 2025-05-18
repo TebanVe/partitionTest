@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 from .projection_iterative import orthogonal_projection_iterative
 from .mesh import TorusMesh  # Add import for type hints
 import matplotlib.pyplot as plt
+import logging
 
 class SLSQPOptimizerAnalytic:
     def __init__(self, 
@@ -44,6 +45,7 @@ class SLSQPOptimizerAnalytic:
             self.starget = np.sqrt(normalized_area * (1 - normalized_area))
         else:
             self.starget = starget
+
             
         # Initialize logging
         self.log = {
@@ -148,7 +150,8 @@ class SLSQPOptimizerAnalytic:
         
         return np.vstack([row_sum_jac, area_jac])
     
-    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8) -> tuple:
+    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8,
+                 level: int = 0, logger=None) -> tuple:
         """
         Optimize using SLSQP with analytic gradients.
         
@@ -160,7 +163,18 @@ class SLSQPOptimizerAnalytic:
         Returns:
             Tuple of (optimized point, success flag)
         """
-        print("\nStarting SLSQP optimization with analytic gradients...")
+        # Set up logger
+        if logger is None:
+            logger = logging.getLogger('partition_optimization')
+            if not logger.hasHandlers():
+                ch = logging.StreamHandler()
+                ch.setLevel(logging.INFO)
+                formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+                ch.setFormatter(formatter)
+                logger.addHandler(ch)
+            logger.setLevel(logging.INFO)
+        self.logger = logger
+        self.logger.info("\nStarting SLSQP optimization with analytic gradients...")
         
         # Initialize logging
         self.log = {
@@ -201,7 +215,7 @@ class SLSQPOptimizerAnalytic:
             'maxiter': maxiter,
             'ftol': 1e-8,
             'eps': 1e-8,  # Match finite-difference step size to gradient accuracy
-            'disp': True
+            'disp': False
         }
         
         # Define constraints with analytic Jacobian
@@ -211,6 +225,10 @@ class SLSQPOptimizerAnalytic:
         
         # Add bounds [0,1] for all variables
         bounds = [(0.0, 1.0) for _ in range(N * n)]
+        
+        # Initialize last valid iterate tracking
+        self.prev_x = None
+        self.curr_x = None
         
         # Run optimization with analytic gradients
         result = minimize(
@@ -224,123 +242,119 @@ class SLSQPOptimizerAnalytic:
             callback=self.callback
         )
         
-        print("\nOptimization completed:")
-        print(f"Success: {result.success}")
-        print(f"Status: {result.message}")
-        print(f"Iterations: {result.nit}")
-        print(f"Final energy: {result.fun:.6e}")
-        print(f"Final constraint violation: {np.max(np.abs(self.constraint_fun(result.x))):.6e}")
+        self.logger.info("\nOptimization completed:")
+        self.logger.info(f"Success: {result.success}")
+        self.logger.info(f"Status: {result.message}")
+        self.logger.info(f"Iterations: {result.nit}")
+        self.logger.info(f"Final energy: {result.fun:.6e}")
+        self.logger.info(f"Final constraint violation: {np.max(np.abs(self.constraint_fun(result.x))):.6e}")
         
-        return result.x, result.success
+        # If not successful (status != 0), use last valid iterate and trim logs
+        if hasattr(result, 'status') and result.status != 0 and self.prev_x is not None:
+            self.logger.warning("Returning last valid iterate before unsuccessful termination.")
+            # Remove last entry from logs (corresponding to problematic final step)
+            for key in ['iterations', 'energies', 'gradient_norms', 'constraint_violations', 'step_sizes', 'optimization_energy_changes', 'x_history']:
+                if self.log[key]:
+                    self.log[key].pop()
+            # Compute and append metrics for self.prev_x
+            energy = self.compute_energy(self.prev_x)
+            grad_norm = np.linalg.norm(self.compute_gradient(self.prev_x))
+            violations = np.max(np.abs(self.constraint_fun(self.prev_x)))
+            if self.log['x_history']:
+                step_size = np.linalg.norm(self.prev_x - self.log['x_history'][-1])
+            else:
+                step_size = 0.0
+            self.log['energies'].append(energy)
+            self.log['gradient_norms'].append(grad_norm)
+            self.log['constraint_violations'].append(violations)
+            self.log['step_sizes'].append(step_size)
+            self.log['x_history'].append(self.prev_x.copy())
+            self.log['iterations'].append(self.log['iterations'][-1]+1 if self.log['iterations'] else 0)
+            return self.prev_x.copy(), result.success
+        else:
+            return result.x, result.success
     
     def callback(self, xk):
         """Callback function to track optimization progress with detailed diagnostics."""
+        self.prev_x = getattr(self, 'curr_x', None)
         iter_num = len(self.log['iterations'])
         N = len(self.v)
         n = self.n_partitions
         phi = xk.reshape(N, n)
-        
-        # Store iteration number
-        self.log['iterations'].append(iter_num)
-        
-        # Store current point and compute step size
-        self.log['x_history'].append(xk.copy())
+        self.curr_x = xk.copy()
         if iter_num > 0:
-            step_size = np.linalg.norm(xk - self.log['x_history'][-2])
+            step_size = np.linalg.norm(xk - self.log['x_history'][-1])
         else:
             step_size = 0.0
-        self.log['step_sizes'].append(step_size)
-        
-        # Compute and log energy
         energy = self.compute_energy(xk)
-        self.log['energies'].append(energy)
-        
-        # Compute and log gradient norm
         grad_norm = np.linalg.norm(self.compute_gradient(xk))
+        violations = np.max(np.abs(self.constraint_fun(xk)))
+        self.log['iterations'].append(iter_num)
+        self.log['x_history'].append(xk.copy())
+        self.log['step_sizes'].append(step_size)
+        self.log['energies'].append(energy)
         self.log['gradient_norms'].append(grad_norm)
-        
-        # Detailed constraint analysis
         row_sums = np.sum(phi, axis=1)
         area_sums = self.v @ phi
         target_area = self.total_area / n
-        
-        # Row sum constraint details
         row_sum_violations = np.abs(row_sums - 1.0)
         max_row_violation = np.max(row_sum_violations)
         avg_row_violation = np.mean(row_sum_violations)
         worst_row_idx = np.argmax(row_sum_violations)
-        
-        # Area constraint details
         area_violations = np.abs(area_sums - target_area)
         max_area_violation = np.max(area_violations)
         avg_area_violation = np.mean(area_violations)
         worst_partition_idx = np.argmax(area_violations)
-        
-        # Variable bounds check
         min_val = np.min(phi)
         max_val = np.max(phi)
         n_below_0 = np.sum(phi < 0)
         n_above_1 = np.sum(phi > 1)
-        
-        # Compute and log overall constraint violations
-        violations = np.max(np.abs(self.constraint_fun(xk)))
         self.log['constraint_violations'].append(violations)
-        
-        # Log energy changes
         if iter_num > 0:
             energy_change = self.log['energies'][-1] - self.log['energies'][-2]
             self.log['optimization_energy_changes'].append(energy_change)
         else:
             self.log['optimization_energy_changes'].append(0.0)
-        
-        # Print detailed progress every 100 iterations
-        if iter_num % 100 == 0:
-            print(f"\nIteration {iter_num}:")
-            print(f"  Energy: {energy:.6e}")
-            print(f"  Gradient norm: {grad_norm:.6e}")
-            print(f"  Overall constraint violation: {violations:.6e}")
-            print(f"  Step size: {step_size:.6e}")
+        # Detailed progress every 50 iterations
+        if iter_num % 50 == 0:
+            self.logger.debug(f"\nIteration {iter_num}:")
+            self.logger.debug(f"  Energy: {energy:.6e}")
+            self.logger.debug(f"  Gradient norm: {grad_norm:.6e}")
+            self.logger.debug(f"  Overall constraint violation: {violations:.6e}")
+            self.logger.debug(f"  Step size: {step_size:.6e}")
             if iter_num > 0:
-                print(f"  Energy change: {self.log['optimization_energy_changes'][-1]:.6e}")
-            
-            # Print detailed constraint information
-            print("\n  Constraint Details:")
-            print(f"    Row Sum Constraints:")
-            print(f"      Max violation: {max_row_violation:.6e} (at row {worst_row_idx})")
-            print(f"      Avg violation: {avg_row_violation:.6e}")
-            print(f"      Worst row sum: {row_sums[worst_row_idx]:.6f}")
-            
-            print(f"    Area Constraints:")
-            print(f"      Max violation: {max_area_violation:.6e} (at partition {worst_partition_idx})")
-            print(f"      Avg violation: {avg_area_violation:.6e}")
-            print(f"      Target area: {target_area:.6e}")
-            print(f"      Worst partition area: {area_sums[worst_partition_idx]:.6e}")
-            
-            print(f"    Variable Bounds:")
-            print(f"      Min value: {min_val:.6f}")
-            print(f"      Max value: {max_val:.6f}")
-            print(f"      Number < 0: {n_below_0}")
-            print(f"      Number > 1: {n_above_1}")
-            
-            # Print warning if constraints are getting worse
+                self.logger.debug(f"  Energy change: {self.log['optimization_energy_changes'][-1]:.6e}")
+            self.logger.debug("\n  Constraint Details:")
+            self.logger.debug(f"    Row Sum Constraints:")
+            self.logger.debug(f"      Max violation: {max_row_violation:.6e} (at row {worst_row_idx})")
+            self.logger.debug(f"      Avg violation: {avg_row_violation:.6e}")
+            self.logger.debug(f"      Worst row sum: {row_sums[worst_row_idx]:.6f}")
+            self.logger.debug(f"    Area Constraints:")
+            self.logger.debug(f"      Max violation: {max_area_violation:.6e} (at partition {worst_partition_idx})")
+            self.logger.debug(f"      Avg violation: {avg_area_violation:.6e}")
+            self.logger.debug(f"      Target area: {target_area:.6e}")
+            self.logger.debug(f"      Worst partition area: {area_sums[worst_partition_idx]:.6e}")
+            self.logger.debug(f"    Variable Bounds:")
+            self.logger.debug(f"      Min value: {min_val:.6f}")
+            self.logger.debug(f"      Max value: {max_val:.6f}")
+            self.logger.debug(f"      Number < 0: {n_below_0}")
+            self.logger.debug(f"      Number > 1: {n_above_1}")
             if iter_num > 0:
                 prev_violation = self.log['constraint_violations'][-2]
-                if violations > prev_violation * 1.5:  # 50% increase
-                    print("\n  WARNING: Significant increase in constraint violation!")
-                    print(f"    Previous: {prev_violation:.6e}")
-                    print(f"    Current:  {violations:.6e}")
+                if violations > prev_violation * 1.5:
+                    self.logger.warning("  WARNING: Significant increase in constraint violation!")
+                    self.logger.warning(f"    Previous: {prev_violation:.6e}")
+                    self.logger.warning(f"    Current:  {violations:.6e}")
                     self.log['warnings'].append(f"Constraint violation increased at iteration {iter_num}")
-            
-            # Every 100 iterations, print a more detailed summary
             if iter_num > 0:
-                print("\n  === Optimization Progress Summary ===")
-                print(f"    Initial energy: {self.log['energies'][0]:.6e}")
-                print(f"    Current energy: {energy:.6e}")
-                print(f"    Energy reduction: {self.log['energies'][0] - energy:.6e}")
-                print(f"    Initial constraint violation: {self.log['constraint_violations'][0]:.6e}")
-                print(f"    Current constraint violation: {violations:.6e}")
-                print(f"    Constraint violation reduction: {self.log['constraint_violations'][0] - violations:.6e}")
-                print("  =================================")
+                self.logger.debug("\n  === Optimization Progress Summary ===")
+                self.logger.debug(f"    Initial energy: {self.log['energies'][0]:.6e}")
+                self.logger.debug(f"    Current energy: {energy:.6e}")
+                self.logger.debug(f"    Energy reduction: {self.log['energies'][0] - energy:.6e}")
+                self.logger.debug(f"    Initial constraint violation: {self.log['constraint_violations'][0]:.6e}")
+                self.logger.debug(f"    Current constraint violation: {violations:.6e}")
+                self.logger.debug(f"    Constraint violation reduction: {self.log['constraint_violations'][0] - violations:.6e}")
+                self.logger.debug("  =================================")
 
     def plot_optimization_metrics(self, save_path='optimization_metrics.png'):
         """Plot optimization metrics including energy, gradient norm, constraint violations, and step size."""
@@ -390,14 +404,14 @@ class SLSQPOptimizerAnalytic:
     
     def print_optimization_log(self):
         """Print a summary of the optimization log."""
-        print("\nOptimization Log Summary:")
-        print("=" * 80)
-        print(f"{'Iteration':>10} {'Energy':>12} {'Grad Norm':>12} {'Constraint':>12} {'Step Size':>12}")
-        print("-" * 80)
-        
+        self.logger.info("Optimization Log Summary:")
+        self.logger.info("=" * 80)
+        self.logger.info(f"{'Iteration':>10} {'Energy':>12} {'Grad Norm':>12} {'Constraint':>12} {'Step Size':>12}")
+        self.logger.info("-" * 80)
         for i in range(len(self.log['iterations'])):
-            print(f"{self.log['iterations'][i]:10d} "
+            self.logger.info(f"{self.log['iterations'][i]:10d} "
                   f"{self.log['energies'][i]:12.6e} "
                   f"{self.log['gradient_norms'][i]:12.6e} "
                   f"{self.log['constraint_violations'][i]:12.6e} "
-                  f"{self.log['step_sizes'][i]:12.6e}") 
+                  f"{self.log['step_sizes'][i]:12.6e}")
+

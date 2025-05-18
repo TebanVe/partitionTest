@@ -2,8 +2,8 @@ import numpy as np
 
 # Surface parameters
 TORUS_PARAMS = {
-    'n_theta': 10,  # Number of points in major circle direction
-    'n_phi': 5,    # Number of points in minor circle direction
+    'n_theta': 20,  # Number of points in major circle direction
+    'n_phi': 10,    # Number of points in minor circle direction
     'R': 1.0,       # Major radius
     'r': 0.6        # Minor radius
 }
@@ -11,7 +11,7 @@ TORUS_PARAMS = {
 # Problem parameters
 PROBLEM_PARAMS = {
     'lambda_penalty': 0.01,  # Penalty weight for constant functions
-    'max_iter': 10000,        # Maximum number of iterations for LBFGS
+    'max_iter': 15000,        # Maximum number of iterations for LBFGS
     'tol': 1e-6,             # Convergence tolerance
     'm': 10                  # Number of corrections to store in LBFGS
 }
@@ -36,8 +36,8 @@ class Config:
         self.lambda_penalty = 0.01
         
         # Optimization parameters
-        self.max_iter = 10000
-        self.tol = 1e-5
+        self.max_iter = 15000
+        self.tol = 1e-6
         
         # Line search parameters
         self.c = 0.5  # Armijo condition parameter
