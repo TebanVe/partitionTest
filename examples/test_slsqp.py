@@ -148,7 +148,8 @@ def test_slsqp(use_analytic=False):
     optimizer.plot_optimization_metrics(save_path='slsqp_optimization_metrics.png')
 
 def plot_refinement_optimization_metrics(
-    energies, grad_norms, constraints, steps, level_boundaries, save_path='refinement_optimization_metrics.png'
+    energies, grad_norms, constraints, steps, level_boundaries, save_path='refinement_optimization_metrics.png',
+    n_partitions=None, n_vertices=None, lambda_penalty=None
 ):
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     x = range(len(energies))
@@ -179,7 +180,10 @@ def plot_refinement_optimization_metrics(
     for ax in axs.flat:
         for boundary in level_boundaries[:-1]:  # skip last, which is end
             ax.axvline(boundary, color='k', linestyle='--', alpha=0.5)
-    plt.tight_layout()
+    # Add a meaningful title at the top
+    if n_partitions is not None and n_vertices is not None and lambda_penalty is not None:
+        fig.suptitle(f"Partition Optimization: n_partitions={n_partitions}, n_vertices={n_vertices}, lambda={lambda_penalty}", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(save_path)
     plt.close()
 
@@ -204,7 +208,10 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
     aspect_ratio = current_n_theta / current_n_phi
     
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    outdir = f'results/run_{timestamp}'
+    config = Config()  # Ensure config is available here
+    initial_n_partitions = config.n_partitions
+    initial_n_vertices = current_n_theta * current_n_phi
+    outdir = f'results/run_{timestamp}_npart{initial_n_partitions}_nvert{initial_n_vertices}'
     os.makedirs(outdir, exist_ok=True)
     logfile_path = os.path.join(outdir, 'run.log')
     logger = setup_logging(logfile_path)
@@ -362,7 +369,8 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
     # Save the plot as well
     plot_refinement_optimization_metrics(
         all_energies, all_grad_norms, all_constraints, all_steps, level_boundaries,
-        save_path=os.path.join(outdir, 'refinement_optimization_metrics.png')
+        save_path=os.path.join(outdir, 'refinement_optimization_metrics.png'),
+        n_partitions=initial_n_partitions, N_vertices=initial_n_vertices, lambda_penalty=config.lambda_penalty
     )
     logger.info(f"Saved plot to {os.path.join(outdir, 'refinement_optimization_metrics.png')}")
     print(f"Partition optimization complete. See {logfile_path} for detailed logs.")
