@@ -20,8 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.mesh import TorusMesh
 from src.slsqp_optimizer import SLSQPOptimizer
-from src.slsqp_optimizer_analytic import SLSQPOptimizerAnalytic
-from src.config import Config, TORUS_PARAMS
+from src.config import Config
 
 def setup_logging(logfile_path):
     logger = logging.getLogger('partition_optimization')
@@ -46,12 +45,13 @@ def setup_logging(logfile_path):
 
 def test_slsqp(use_analytic=False):
     """Test SLSQP optimizer for manifold partition optimization."""
+    config = Config()
     # Create torus mesh using parameters from config
     mesh = TorusMesh(
-        n_theta=TORUS_PARAMS['n_theta'],
-        n_phi=TORUS_PARAMS['n_phi'],
-        R=TORUS_PARAMS['R'],
-        r=TORUS_PARAMS['r']
+        n_theta=config.n_theta,
+        n_phi=config.n_phi,
+        R=config.R,
+        r=config.r
     )
     
     # Compute mass and stiffness matrices
@@ -69,27 +69,16 @@ def test_slsqp(use_analytic=False):
     print(f"\nSetting epsilon to average triangle side length: {epsilon:.6e}")
     
     # Create optimizer with config values
-    config = Config()
-    if use_analytic:
-        optimizer = SLSQPOptimizerAnalytic(
-            K=K,
-            M=M,
-            v=v,
-            n_partitions=config.n_partitions,
-            epsilon=epsilon,  # Pass epsilon directly
-            lambda_penalty=config.lambda_penalty,
-        )
-        print("\nUsing SLSQP with analytic gradients")
-    else:
-        optimizer = SLSQPOptimizer(
-            K=K,
-            M=M,
-            v=v,
-            n_partitions=config.n_partitions,
-            epsilon=epsilon,
-            lambda_penalty=config.lambda_penalty
-        )
-        print("\nUsing SLSQP with finite differences")
+    optimizer = SLSQPOptimizer(
+        K=K,
+        M=M,
+        v=v,
+        n_partitions=config.n_partitions,
+        epsilon=epsilon,  # Pass epsilon directly
+        lambda_penalty=config.lambda_penalty,
+        starget=config.starget
+    )
+    print("\nUsing SLSQP with " + ("analytic" if use_analytic else "finite-difference") + " gradients")
     
     # Test with multiple random seeds
     seeds = [42, 123, 456, 789, 101]
@@ -109,7 +98,7 @@ def test_slsqp(use_analytic=False):
         
         # Run optimization
         start_time = time.time()
-        x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, level=0)
+        x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
         opt_time = time.time() - start_time
         optimizer.print_optimization_log()
         
@@ -195,26 +184,24 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         refinement_levels: Number of mesh refinement levels
         vertices_increment: Number of vertices to add at each refinement
     """
+    config = Config()
     # Initial mesh parameters
-    initial_params = TORUS_PARAMS.copy()
+    current_n_theta = config.n_theta
+    current_n_phi = config.n_phi
+    aspect_ratio = current_n_theta / current_n_phi
     results = []
     # For unified plotting
     all_energies, all_grad_norms, all_constraints, all_steps = [], [], [], []
     level_boundaries = []
     total_iters = 0
-    # Start with initial mesh size
-    current_n_theta = initial_params['n_theta']
-    current_n_phi = initial_params['n_phi']
-    aspect_ratio = current_n_theta / current_n_phi
-    
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    config = Config()  # Ensure config is available here
     initial_n_partitions = config.n_partitions
     initial_n_vertices = current_n_theta * current_n_phi
     outdir = f'results/run_{timestamp}_npart{initial_n_partitions}_nvert{initial_n_vertices}'
     os.makedirs(outdir, exist_ok=True)
     logfile_path = os.path.join(outdir, 'run.log')
     logger = setup_logging(logfile_path)
+    print() 
     logger.info(f"Starting partition optimization with {refinement_levels} refinement levels, {vertices_increment} vertices increment, analytic={use_analytic}")
     logger.info(f"Results will be saved in: {outdir}")
     
@@ -227,8 +214,8 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         mesh = TorusMesh(
             n_theta=current_n_theta,
             n_phi=current_n_phi,
-            R=initial_params['R'],
-            r=initial_params['r']
+            R=config.R,
+            r=config.r
         )
         
         # Compute matrices and statistics
@@ -241,27 +228,16 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         print(f"\nSetting epsilon to average triangle side length: {epsilon:.6e}")
         
         # Create optimizer
-        config = Config()
-        if use_analytic:
-            optimizer = SLSQPOptimizerAnalytic(
-                K=K,
-                M=M,
-                v=v,
-                n_partitions=config.n_partitions,
-                epsilon=epsilon,
-                lambda_penalty=config.lambda_penalty
-            )
-            print("\nUsing SLSQP with analytic gradients")
-        else:
-            optimizer = SLSQPOptimizer(
-                K=K,
-                M=M,
-                v=v,
-                n_partitions=config.n_partitions,
-                epsilon=epsilon,
-                lambda_penalty=config.lambda_penalty
-            )
-            print("\nUsing SLSQP with finite differences")
+        optimizer = SLSQPOptimizer(
+            K=K,
+            M=M,
+            v=v,
+            n_partitions=config.n_partitions,
+            epsilon=epsilon,
+            lambda_penalty=config.lambda_penalty,
+            starget=config.starget
+        )
+        print("\nUsing SLSQP with " + ("analytic" if use_analytic else "finite-difference") + " gradients")
         
         # Set refinement level attribute for logging
         optimizer.refinement_level = level
@@ -278,13 +254,13 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         
         # Run optimization
         start_time = time.time()
-        x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, logger=logger)
+        x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
         opt_time = time.time() - start_time
         
         # Store results
         results.append({
             'level': level,
-            'mesh_params': {'n_theta': current_n_theta, 'n_phi': current_n_phi, 'R': initial_params['R'], 'r': initial_params['r']},
+            'mesh_params': {'n_theta': current_n_theta, 'n_phi': current_n_phi, 'R': config.R, 'r': config.r},
             'mesh_stats': mesh_stats,
             'epsilon': epsilon,
             'x_opt': x_opt,
@@ -307,12 +283,12 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         logger.debug(f"Level {level+1}: {len(optimizer.log['energies'])} energies, {len(all_energies)} total energies")
         
         # Print results for this level
-        logger.info(f"\nResults for level {level + 1}:")
+        logger.info(f"Results for level {level + 1}:")
         logger.info(f"Mesh size: {current_n_theta}x{current_n_phi}")
         logger.info(f"Epsilon: {epsilon:.6e}")
         logger.info(f"Energy: {results[-1]['energy']:.6e}")
         logger.info(f"Time: {opt_time:.2f}s")
-        logger.info(f"Success: {success}")
+        logger.info(f"Success: {success}\n")
         
         # Update mesh size for next refinement (add ~vertices_increment vertices)
         current_vertices = current_n_theta * current_n_phi
@@ -322,7 +298,7 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         current_n_theta, current_n_phi = new_n_theta, new_n_phi
     
     # Print summary of all levels
-    logger.info("\nRefinement Summary:")
+    logger.info("Refinement Summary:")
     logger.info("=" * 80)
     logger.info(f"{'Level':>6} {'Mesh Size':>12} {'Epsilon':>12} {'Energy':>12} {'Time (s)':>10}")
     logger.info("-" * 80)
@@ -332,6 +308,7 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         logger.info(f"{r['level']+1:6d} {mesh_size:>12} {r['epsilon']:12.6e} "
               f"{r['energy']:12.6e} {r['time']:10.2f}")
     
+    print()
     # After the refinement loop, save results
     # Save final solution and mesh as HDF5
     final_result = results[-1]
@@ -345,7 +322,12 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
     # Save input parameters and metadata as YAML
     meta = {
         'input_parameters': {
-            'TORUS_PARAMS': dict(TORUS_PARAMS),
+            'TORUS_PARAMS': {
+                'n_theta': config.n_theta,
+                'n_phi': config.n_phi,
+                'R': config.R,
+                'r': config.r
+            },
             'refinement_levels': refinement_levels,
             'vertices_increment': vertices_increment,
             'use_analytic': use_analytic,
@@ -370,10 +352,10 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
     plot_refinement_optimization_metrics(
         all_energies, all_grad_norms, all_constraints, all_steps, level_boundaries,
         save_path=os.path.join(outdir, 'refinement_optimization_metrics.png'),
-        n_partitions=initial_n_partitions, N_vertices=initial_n_vertices, lambda_penalty=config.lambda_penalty
+        n_partitions=initial_n_partitions, n_vertices=initial_n_vertices, lambda_penalty=config.lambda_penalty
     )
     logger.info(f"Saved plot to {os.path.join(outdir, 'refinement_optimization_metrics.png')}")
-    print(f"Partition optimization complete. See {logfile_path} for detailed logs.")
+    print(f"Partition optimization complete. See {logfile_path} for detailed logs.\n")
     return results
 
 def interpolate_solution(old_x, old_mesh, new_mesh):
@@ -404,8 +386,18 @@ if __name__ == "__main__":
     parser.add_argument('--refine', action='store_true', help='Use mesh refinement')
     parser.add_argument('--refinement-levels', type=int, default=4, help='Number of mesh refinement levels')
     parser.add_argument('--vertices-increment', type=int, default=1000, help='Number of vertices to add per refinement')
+    parser.add_argument('--input', type=str, help='Path to input YAML file with parameters')
     args = parser.parse_args()
-    
+
+    # Load parameters from YAML if provided
+    if args.input:
+        with open(args.input, 'r') as f:
+            params = yaml.safe_load(f)
+        config = Config(params)
+    else:
+        config = Config()
+
+    # Use config attributes for mesh and optimization parameters throughout
     if args.refine:
         test_slsqp_with_refinement(use_analytic=args.analytic, refinement_levels=args.refinement_levels, vertices_increment=args.vertices_increment)
     else:

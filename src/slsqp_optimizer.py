@@ -2,6 +2,9 @@ import numpy as np
 from typing import Tuple, List, Optional, Dict
 from scipy.optimize import minimize
 from .projection_iterative import orthogonal_projection_iterative
+from .mesh import TorusMesh  # Add import for type hints
+import matplotlib.pyplot as plt
+import logging
 
 class SLSQPOptimizer:
     def __init__(self, 
@@ -9,7 +12,7 @@ class SLSQPOptimizer:
                  M: np.ndarray,  # Mass matrix
                  v: np.ndarray,  # Mass matrix column sums (v = 1ᵀM)
                  n_partitions: int,
-                 epsilon: float,
+                 epsilon: float,  # Interface width parameter
                  lambda_penalty: float = 1.0,
                  starget: Optional[float] = None):
         """
@@ -28,31 +31,151 @@ class SLSQPOptimizer:
         self.M = M
         self.v = v
         self.n_partitions = n_partitions
+        self.lambda_penalty = lambda_penalty
+        
+        # Get mesh statistics
+        self.total_area = np.sum(v)
+
+        # Set epsilon from mesh statistics
         self.epsilon = epsilon
         
-        # Compute characteristic scales
-        self.total_area = np.sum(v)
-        self.avg_edge_length = np.sqrt(self.total_area / len(v))
-        
-        # More aggressive scaling factors
-        self.grad_scale = 1.0  # Base scale
-        self.interface_scale = 0.01  # Significantly reduce interface term
-        self.penalty_scale = 0.1  # Reduce penalty term influence
-        
-        # Scale lambda_penalty down
-        self.lambda_penalty = lambda_penalty * 0.1
-        
+        # Compute target standard deviation if not provided
         if starget is None:
             normalized_area = 1.0/n_partitions
             self.starget = np.sqrt(normalized_area * (1 - normalized_area))
         else:
             self.starget = starget
+
             
-        # Increase cache tolerance
-        self.cache_tolerance = 1e-10
+        # Initialize logging
+        self.log = {
+            'iterations': [],
+            'energies': [],
+            'gradient_norms': [],
+            'constraint_violations': [],
+            'warnings': [],
+            'step_sizes': [],
+            'optimization_energy_changes': [],
+            'x_history': [],
+                    }
         
-        # Cache for function evaluations
-        self.cache = {}
+    def compute_energy(self, x: np.ndarray) -> float:
+        """Compute the total energy of the system."""
+        N = len(self.v)
+        phi = x.reshape(N, self.n_partitions)
+        
+        # Compute gradient term
+        grad_term = 0
+        for i in range(self.n_partitions):
+            phi_i = phi[:, i]
+            term = self.epsilon * float(phi_i.T @ (self.K @ phi_i))
+            grad_term += term
+            
+        # Compute interface term
+        interface_term = 0
+        for i in range(self.n_partitions):
+            interface_vec = phi[:, i]**2 * (1 - phi[:, i])**2
+            term = (1/self.epsilon) * float(interface_vec.T @ (self.M @ interface_vec))
+            interface_term += term
+            
+        # Compute penalty term
+        penalty_term = 0
+        for i in range(self.n_partitions):
+            mean_i = np.sum(self.v * phi[:, i]) / self.total_area
+            var_i = np.sum(self.v * (phi[:, i] - mean_i)**2) / self.total_area
+            std_i = np.sqrt(var_i + 1e-10)
+            term = self.lambda_penalty * (std_i - self.starget)**2
+            penalty_term += term
+            
+        return grad_term + interface_term + penalty_term
+    
+    def compute_gradient(self, x: np.ndarray) -> np.ndarray:
+        """Compute the analytic gradient of the energy."""
+        N = len(self.v)
+        phi = x.reshape(N, self.n_partitions)
+        grad = np.zeros_like(x)
+        
+        for i in range(self.n_partitions):
+            # Gradient term
+            grad_grad = 2 * self.epsilon * (self.K @ phi[:, i])
+            
+            # Interface term
+            phi_i = phi[:, i]
+            interface_vec = phi_i**2 * (1 - phi_i)**2
+            grad_interface = (2/self.epsilon) * (self.M @ (interface_vec * (1 - 2*phi_i)))
+            
+            # Penalty term
+            mean_i = np.sum(self.v * phi_i) / self.total_area
+            var_i = np.sum(self.v * (phi_i - mean_i)**2) / self.total_area
+            std_i = np.sqrt(var_i + 1e-10)
+            grad_penalty = 2 * self.lambda_penalty * (std_i - self.starget) * \
+                         (self.v * (phi_i - mean_i)) / (self.total_area * std_i)
+            
+            grad[i*N:(i+1)*N] = grad_grad + grad_interface + grad_penalty
+        
+        return grad
+    
+    def constraint_fun(self, x: np.ndarray) -> np.ndarray:
+        """Compute constraint functions for SLSQP."""
+        N = len(self.v)
+        n = self.n_partitions
+        phi = x.reshape(N, n)
+        
+        # Row sum constraints (all but last row)
+        row_sums = np.sum(phi, axis=1)[:-1] - 1.0
+        
+        # Area constraints (all but last partition, absolute, not normalized)
+        area_sums = self.v @ phi
+        target_area = self.total_area / n
+        area_constraints = area_sums[:-1] - target_area
+        
+        return np.concatenate([row_sums, area_constraints])
+    
+    def constraint_jac(self, x: np.ndarray) -> np.ndarray:
+        """Compute analytic Jacobian of constraint functions (vectorized)."""
+        N = len(self.v)
+        n = self.n_partitions
+        
+        # Row sum Jacobian: (N-1) x (N*n)
+        # For each row i, the Jacobian is 1 for all entries in that row
+        row_sum_jac = np.zeros((N-1, N * n))
+        for i in range(N-1):
+            row_sum_jac[i, i::N] = 1.0
+        
+        # Area Jacobian: (n-1) x (N*n)
+        # For each partition i, the Jacobian is v for that partition's block
+        area_jac = np.zeros((n-1, N * n))
+        for i in range(n-1):
+            area_jac[i, i*N:(i+1)*N] = self.v
+        
+        return np.vstack([row_sum_jac, area_jac])
+    
+    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8, use_analytic=True, logger=None) -> tuple:
+        """
+        Optimize using SLSQP with optional analytic gradients.
+        
+        Args:
+            x0: Initial point
+            maxiter: Maximum number of iterations
+            ftol: Function tolerance
+            use_analytic: Whether to use analytic gradients
+            logger: Logger for optimization progress
+            
+        Returns:
+            Tuple of (optimized point, success flag)
+        """
+        # Set up logger
+        if logger is None:
+            logger = logging.getLogger('partition_optimization')
+            if not logger.hasHandlers():
+                ch = logging.StreamHandler()
+                ch.setLevel(logging.INFO)
+                formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+                ch.setFormatter(formatter)
+                logger.addHandler(ch)
+            logger.setLevel(logging.INFO)
+        self.logger = logger
+        self.logger.info("Starting SLSQP optimization with " + ("analytic" if use_analytic else "finite-difference") + " gradients...")
         
         # Initialize logging
         self.log = {
@@ -63,306 +186,236 @@ class SLSQPOptimizer:
             'warnings': [],
             'step_sizes': [],
             'optimization_energy_changes': [],
-            'term_magnitudes': [],
-            'x_history': []  # Add this to track the optimization path
-        }
-        
-    def _get_cache_key(self, x: np.ndarray) -> tuple:
-        """Generate a cache key for an input array."""
-        return tuple(np.round(x / self.cache_tolerance) * self.cache_tolerance)
-    
-    def compute_energy(self, x: np.ndarray) -> float:
-        """Compute the total energy with caching and improved scaling."""
-        # Check cache
-        cache_key = self._get_cache_key(x)
-        if cache_key in self.cache:
-            return self.cache[cache_key]['energy']
-        
-        N = len(self.v)
-        phi = x.reshape(N, self.n_partitions)
-        
-        # Compute gradient term (scaled by mesh size)
-        grad_term = 0
-        for i in range(self.n_partitions):
-            phi_i = phi[:, i]
-            term = self.grad_scale * self.epsilon * float(phi_i.T @ (self.K @ phi_i))
-            grad_term += term
-            
-        # Compute interface term (scaled down)
-        interface_term = 0
-        for i in range(self.n_partitions):
-            phi_i = phi[:, i]
-            interface_vec = phi_i**2 * (1 - phi_i)**2
-            term = self.interface_scale * (1/self.epsilon) * float(interface_vec.T @ (self.M @ interface_vec))
-            interface_term += term
-            
-        # Compute penalty term (with improved stability)
-        penalty_term = 0
-        for i in range(self.n_partitions):
-            # Use weighted statistics for better numerical stability
-            weights = self.v / self.total_area
-            mean_i = np.sum(weights * phi[:, i])
-            var_i = np.sum(weights * (phi[:, i] - mean_i)**2)
-            std_i = np.sqrt(var_i + 1e-10)
-            term = self.penalty_scale * self.lambda_penalty * (std_i - self.starget)**2
-            penalty_term += term
-            
-        total_energy = grad_term + interface_term + penalty_term
-        
-        # Cache result
-        self.cache[cache_key] = {
-            'energy': total_energy,
-            'grad_term': grad_term,
-            'interface_term': interface_term,
-            'penalty_term': penalty_term
-        }
-        
-        return total_energy
-    
-    def compute_gradient(self, x: np.ndarray) -> np.ndarray:
-        """Compute the gradient of the energy."""
-        print("\nComputing gradient...")
-        N = len(self.v)
-        phi = x.reshape(N, self.n_partitions)
-        grad = np.zeros_like(x)
-        
-        for i in range(self.n_partitions):
-            # Gradient term
-            grad_grad = 2 * self.epsilon * (self.K @ phi[:, i])
-            grad_grad_norm = np.linalg.norm(grad_grad)
-            print(f"  Gradient term {i} norm: {grad_grad_norm:.6f}")
-            
-            # Interface term
-            interface_vec = phi[:, i]**2 * (1 - phi[:, i])**2
-            grad_interface = (2/self.epsilon) * (self.M @ (interface_vec * (1 - 2*phi[:, i])))
-            grad_interface_norm = np.linalg.norm(grad_interface)
-            print(f"  Interface term {i} norm: {grad_interface_norm:.6f}")
-            
-            # Penalty term
-            mean_i = np.mean(phi[:, i])
-            var_i = np.mean((phi[:, i] - mean_i)**2)
-            std_i = np.sqrt(var_i + 1e-10)
-            grad_penalty = 2 * self.lambda_penalty * (std_i - self.starget) * \
-                        (phi[:, i] - mean_i) / (N * std_i)
-            grad_penalty_norm = np.linalg.norm(grad_penalty)
-            print(f"  Penalty term {i} norm: {grad_penalty_norm:.6f}")
-            
-            grad[i*N:(i+1)*N] = grad_grad + grad_interface + grad_penalty
-        
-        grad_norm = np.linalg.norm(grad)
-        print(f"Total gradient norm: {grad_norm:.6f}")
-        return grad
-    
-    def check_constraints(self, x: np.ndarray) -> dict:
-        """Check constraint violations for a given point."""
-        N = len(self.v)
-        phi = x.reshape(N, self.n_partitions)
-        
-        # Check partition constraint
-        row_sums = np.sum(phi, axis=1)
-        row_sum_violation = np.max(np.abs(row_sums - 1.0))
-        
-        # Check area constraint
-        area_sums = self.v @ phi
-        target_area = np.sum(self.v)/self.n_partitions
-        area_violation = np.max(np.abs(area_sums - target_area))
-        
-        # Check non-negativity
-        nonneg_violation = -np.min(phi) if np.min(phi) < 0 else 0
-        
-        return {
-            'row_sum': row_sum_violation,
-            'area': area_violation,
-            'nonneg': nonneg_violation
-        }
-    
-    def constraint_fun(self, x: np.ndarray) -> np.ndarray:
-        """Compute constraints with relaxed tolerances."""
-        N = len(self.v)
-        phi = x.reshape(N, self.n_partitions)
-        
-        # Compute row sum constraints (reduced number)
-        row_sums = np.sum(phi, axis=1) - 1.0
-        # Only use a subset of row constraints
-        n_row_constraints = min(N-1, 100)  # Limit number of row constraints
-        row_indices = np.arange(0, N-1, N//n_row_constraints)
-        row_violations = row_sums[row_indices]
-        
-        # Compute area constraints
-        area_sums = self.v @ phi
-        target_area = self.total_area / self.n_partitions
-        area_constraints = (area_sums - target_area) / target_area  # Scale by target area
-        
-        # Return all constraints except the last area constraint
-        return np.concatenate([row_violations, area_constraints[:-1]])
-    
-    def constraint_jac(self, x: np.ndarray) -> np.ndarray:
-        """Compute constraint Jacobian with reduced constraints."""
-        N = len(self.v)
-        n = self.n_partitions
-        
-        # Reduced number of row constraints
-        n_row_constraints = min(N-1, 100)
-        row_indices = np.arange(0, N-1, N//n_row_constraints)
-        
-        # Row sum Jacobian (reduced)
-        row_sum_jac = np.zeros((len(row_indices), N * n))
-        for idx, i in enumerate(row_indices):
-            for j in range(n):
-                row_sum_jac[idx, i + j*N] = 1.0
-        
-        # Area Jacobian (excluding last constraint)
-        area_jac = np.zeros((n-1, N * n))
-        target_area = self.total_area / n
-        for i in range(n-1):
-            area_jac[i, i*N:(i+1)*N] = self.v / target_area
-        
-        return np.vstack([row_sum_jac, area_jac])
-    
-    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8) -> tuple:
-        """Optimize with more aggressive parameters."""
-        print("\nStarting SLSQP optimization...")
-        
-        # Initialize logging
-        self.log = {
-            'iterations': [],
-            'energies': [],
-            'constraint_violations': [],
-            'warnings': [],
-            'step_sizes': [],
-            'optimization_energy_changes': [],
             'x_history': []
         }
         
-        # Clear cache
-        self.cache.clear() 
+        # Store initial point
+        self.log['x_history'].append(x0.copy())
         
-        # Project initial point more aggressively
+        # Project initial point
         N = len(self.v)
-        x0_reshaped = x0.reshape(N, self.n_partitions)
-        x0_reshaped = np.maximum(x0_reshaped, 0)
+        n = self.n_partitions
+        x0_reshaped = x0.reshape(N, n)
+        x0_reshaped = np.clip(x0_reshaped, 0, 1)  # Enforce bounds [0,1]
         
-        # More aggressive row normalization
+        # Normalize rows
         row_sums = np.sum(x0_reshaped, axis=1, keepdims=True)
-        x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-6)
+        x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-10)
         
-        # More aggressive area scaling
-        target_area = self.total_area / self.n_partitions
+        # Scale to satisfy area constraints approximately
+        target_area = self.total_area / n
         current_areas = self.v @ x0_reshaped
-        area_scales = target_area / np.maximum(current_areas, target_area/5)
-        for i in range(self.n_partitions):
+        area_scales = target_area / np.maximum(current_areas, target_area/10)
+        for i in range(n):
             x0_reshaped[:, i] *= area_scales[i]
         
         x0 = x0_reshaped.flatten()
         
-        # More aggressive SLSQP options
+        # Set up SLSQP options with tight tolerances
         options = {
             'maxiter': maxiter,
-            'ftol': 1e-6,  # Looser tolerance
-            'disp': True,
-            'eps': 1e-3,  # Larger steps
-            'finite_diff_rel_step': 1e-4  # Larger finite difference step
+            'ftol': 1e-8,
+            'eps': 1e-8,  # Match finite-difference step size to gradient accuracy
+            'disp': False
         }
         
-        # Define constraints with reduced row constraints
+        # Define constraints with analytic Jacobian
         constraints = [
             {'type': 'eq', 'fun': self.constraint_fun, 'jac': self.constraint_jac}
         ]
         
-        # Looser bounds
-        bounds = [(0, 2.0) for _ in range(len(x0))]
+        # Add bounds [0,1] for all variables
+        bounds = [(0.0, 1.0) for _ in range(N * n)]
         
-        # Run optimization
+        # Initialize last valid iterate tracking
+        self.prev_x = None
+        self.curr_x = None
+        
+        # Run optimization with or without analytic gradients
         result = minimize(
             self.compute_energy,
             x0,
             method='SLSQP',
+            jac=self.compute_gradient if use_analytic else None,  # Use analytic gradient if specified
             bounds=bounds,
             constraints=constraints,
             options=options,
             callback=self.callback
         )
         
-        print("\nOptimization completed:")
-        print(f"Success: {result.success}")
-        print(f"Status: {result.message}")
-        print(f"Iterations: {result.nit}")
-        print(f"Final energy: {result.fun:.6e}")
-        print(f"Final constraint violation: {np.max(np.abs(self.constraint_fun(result.x))):.6e}")
+        self.logger.info("Optimization completed:")
+        self.logger.info(f"Success: {result.success}")
+        self.logger.info(f"Status: {result.message}")
+        self.logger.info(f"Iterations: {result.nit}")
+        self.logger.info(f"Final energy: {result.fun:.6e}")
+        self.logger.info(f"Final constraint violation: {np.max(np.abs(self.constraint_fun(result.x))):.6e}")
         
-        return result.x, result.success
+        # If not successful (status != 0), use last valid iterate and trim logs
+        if hasattr(result, 'status') and result.status != 0 and self.prev_x is not None:
+            self.logger.warning("Returning last valid iterate before unsuccessful termination.\n")
+            # Remove last entry from logs (corresponding to problematic final step)
+            for key in ['iterations', 'energies', 'gradient_norms', 'constraint_violations', 'step_sizes', 'optimization_energy_changes', 'x_history']:
+                if self.log[key]:
+                    self.log[key].pop()
+            # Compute and append metrics for self.prev_x
+            energy = self.compute_energy(self.prev_x)
+            grad_norm = np.linalg.norm(self.compute_gradient(self.prev_x))
+            violations = np.max(np.abs(self.constraint_fun(self.prev_x)))
+            if self.log['x_history']:
+                step_size = np.linalg.norm(self.prev_x - self.log['x_history'][-1])
+            else:
+                step_size = 0.0
+            self.log['energies'].append(energy)
+            self.log['gradient_norms'].append(grad_norm)
+            self.log['constraint_violations'].append(violations)
+            self.log['step_sizes'].append(step_size)
+            self.log['x_history'].append(self.prev_x.copy())
+            self.log['iterations'].append(self.log['iterations'][-1]+1 if self.log['iterations'] else 0)
+            return self.prev_x.copy(), result.success
+        else:
+            return result.x, result.success
     
-    def print_optimization_log(self):
-        """Print detailed optimization log."""
-        if not self.log['energies']:
-            print("No optimization steps were logged!")
-            return
-            
-        print("\nDetailed Optimization Log:")
-        print("=" * 120)
-        print(f"{'Iter':>5} {'Energy':>12} {'Grad Norm':>12} {'Row Sum':>12} {'Area':>12} {'Nonneg':>12}")
-        print("-" * 120)
-        
-        for i in range(len(self.log['iterations'])):
-            iter_idx = self.log['iterations'][i]
-            energy = self.log['energies'][i]
-            grad_norm = self.log.get('gradient_norms', [0.0] * len(self.log['iterations']))[i]
-            constraints = self.log['constraint_violations'][i]
-            
-            print(f"{iter_idx:5d} {energy:12.6f} {grad_norm:12.6f} "
-                  f"{constraints['row_sum']:12.6f} {constraints['area']:12.6f} {constraints['nonneg']:12.6f}")
-        
-        print("\nWarnings and Notable Events:")
-        print("=" * 100)
-        for warning in self.log['warnings']:
-            print(warning)
-            
     def callback(self, xk):
-        """Callback function to track optimization progress."""
+        """Callback function to track optimization progress with detailed diagnostics."""
+        self.prev_x = getattr(self, 'curr_x', None)
         iter_num = len(self.log['iterations'])
-        
-        # Store iteration number
-        self.log['iterations'].append(iter_num)
-        
-        # Store current point and compute step size
-        self.log['x_history'].append(xk.copy())
+        N = len(self.v)
+        n = self.n_partitions
+        phi = xk.reshape(N, n)
+        self.curr_x = xk.copy()
         if iter_num > 0:
-            step_size = np.linalg.norm(xk - self.log['x_history'][-2])
+            step_size = np.linalg.norm(xk - self.log['x_history'][-1])
         else:
             step_size = 0.0
-        self.log['step_sizes'].append(step_size)
-        
-        # Compute and log energy
         energy = self.compute_energy(xk)
+        grad_norm = np.linalg.norm(self.compute_gradient(xk))
+        violations = np.max(np.abs(self.constraint_fun(xk)))
+
+        self.log['iterations'].append(iter_num)
+        self.log['x_history'].append(xk.copy())
+        self.log['step_sizes'].append(step_size)
         self.log['energies'].append(energy)
+        self.log['gradient_norms'].append(grad_norm)
+
+        row_sums = np.sum(phi, axis=1)
+        area_sums = self.v @ phi
+        target_area = self.total_area / n
+        row_sum_violations = np.abs(row_sums - 1.0)
+        max_row_violation = np.max(row_sum_violations)
+        avg_row_violation = np.mean(row_sum_violations)
+        worst_row_idx = np.argmax(row_sum_violations)
+        area_violations = np.abs(area_sums - target_area)
+        max_area_violation = np.max(area_violations)
+        avg_area_violation = np.mean(area_violations)
+        worst_partition_idx = np.argmax(area_violations)
+        min_val = np.min(phi)
+        max_val = np.max(phi)
+        n_below_0 = np.sum(phi < 0)
+        n_above_1 = np.sum(phi > 1)
         
-        # Compute and log constraint violations
-        violations = self.check_constraints(xk)  # This returns a dictionary
         self.log['constraint_violations'].append(violations)
-        
-        # Log energy changes
         if iter_num > 0:
             energy_change = self.log['energies'][-1] - self.log['energies'][-2]
             self.log['optimization_energy_changes'].append(energy_change)
         else:
             self.log['optimization_energy_changes'].append(0.0)
+        # Detailed progress every 50 iterations
+        if iter_num % 50 == 0:
+            self.logger.debug(f"  Iteration {iter_num}:")
+            self.logger.debug(f"  Energy: {energy:.6e}")
+            self.logger.debug(f"  Gradient norm: {grad_norm:.6e}")
+            self.logger.debug(f"  Overall constraint violation: {violations:.6e}")
+            self.logger.debug(f"  Step size: {step_size:.6e}\n")
+            if iter_num > 0:
+                self.logger.debug(f"  Energy change: {self.log['optimization_energy_changes'][-1]:.6e}")
+            self.logger.debug("  Constraint Details:")
+            self.logger.debug(f"    Row Sum Constraints:")
+            self.logger.debug(f"      Max violation: {max_row_violation:.6e} (at row {worst_row_idx})")
+            self.logger.debug(f"      Avg violation: {avg_row_violation:.6e}")
+            self.logger.debug(f"      Worst row sum: {row_sums[worst_row_idx]:.6f}")
+            self.logger.debug(f"    Area Constraints:")
+            self.logger.debug(f"      Max violation: {max_area_violation:.6e} (at partition {worst_partition_idx})")
+            self.logger.debug(f"      Avg violation: {avg_area_violation:.6e}")
+            self.logger.debug(f"      Target area: {target_area:.6e}")
+            self.logger.debug(f"      Worst partition area: {area_sums[worst_partition_idx]:.6e}")
+            self.logger.debug(f"    Variable Bounds:")
+            self.logger.debug(f"      Min value: {min_val:.6f}")
+            self.logger.debug(f"      Max value: {max_val:.6f}")
+            self.logger.debug(f"      Number < 0: {n_below_0}")
+            self.logger.debug(f"      Number > 1: {n_above_1}\n")
+            if iter_num > 0:
+                prev_violation = self.log['constraint_violations'][-2]
+                if violations > prev_violation * 1.5:
+                    self.logger.warning("  WARNING: Significant increase in constraint violation!")
+                    self.logger.warning(f"    Previous: {prev_violation:.6e}")
+                    self.logger.warning(f"    Current:  {violations:.6e}\n")
+                    self.log['warnings'].append(f"Constraint violation increased at iteration {iter_num}")
+            if (iter_num > 0) and (iter_num % 500 == 0):
+                self.logger.debug("  === Optimization Progress Summary ===")
+                self.logger.debug(f"    Initial energy: {self.log['energies'][0]:.6e}")
+                self.logger.debug(f"    Current energy: {energy:.6e}")
+                self.logger.debug(f"    Energy reduction: {self.log['energies'][0] - energy:.6e}")
+                self.logger.debug(f"    Initial constraint violation: {self.log['constraint_violations'][0]:.6e}")
+                self.logger.debug(f"    Current constraint violation: {violations:.6e}")
+                self.logger.debug(f"    Constraint violation reduction: {self.log['constraint_violations'][0] - violations:.6e}")
+                self.logger.debug("  =================================\n")
+
+    def plot_optimization_metrics(self, save_path='optimization_metrics.png'):
+        """Plot optimization metrics including energy, gradient norm, constraint violations, and step size."""
+        if not self.log['energies']:
+            print("No optimization steps were logged!")
+            return
+            
+        # Create figure with 2x2 subplots
+        fig, axs = plt.subplots(2, 2, figsize=(15, 12))
         
-        # Print progress every iteration
-        print(f"\nIteration {iter_num}:")
-        print(f"  Energy: {energy:.6e}")
-        print(f"  Constraint violations:")
-        print(f"    Row sum: {violations['row_sum']:.6e}")
-        print(f"    Area: {violations['area']:.6e}")
-        print(f"    Non-negativity: {violations['nonneg']:.6e}")
-        print(f"  Step size: {step_size:.6e}")
-        if iter_num > 0:
-            print(f"  Energy change: {self.log['optimization_energy_changes'][-1]:.6e}")
+        # Plot 1: Energy vs Iterations
+        axs[0, 0].plot(self.log['iterations'], self.log['energies'], 'b-', label='Energy')
+        axs[0, 0].set_xlabel('Iteration')
+        axs[0, 0].set_ylabel('Energy')
+        axs[0, 0].set_title('Energy Convergence')
+        axs[0, 0].grid(True)
+        axs[0, 0].legend()
         
-        # Print energy breakdown from cache
-        cache_key = self._get_cache_key(xk)
-        if cache_key in self.cache:
-            cache_entry = self.cache[cache_key]
-            print(f"  Energy breakdown:")
-            print(f"    Gradient term: {cache_entry['grad_term']:.6e}")
-            print(f"    Interface term: {cache_entry['interface_term']:.6e}")
-            print(f"    Penalty term: {cache_entry['penalty_term']:.6e}") 
+        # Plot 2: Gradient Norm vs Iterations
+        axs[0, 1].plot(self.log['iterations'], self.log['gradient_norms'], 'r-', label='Gradient Norm')
+        axs[0, 1].set_xlabel('Iteration')
+        axs[0, 1].set_ylabel('Gradient Norm')
+        axs[0, 1].set_title('Gradient Norm Convergence')
+        axs[0, 1].grid(True)
+        axs[0, 1].legend()
+        
+        # Plot 3: Constraint Violations vs Iterations
+        axs[1, 0].plot(self.log['iterations'], self.log['constraint_violations'], 'g-', label='Overall Constraint Violation')
+        axs[1, 0].set_xlabel('Iteration')
+        axs[1, 0].set_ylabel('Constraint Violation')
+        axs[1, 0].set_title('Constraint Violation Convergence')
+        axs[1, 0].grid(True)
+        axs[1, 0].legend()
+        
+        # Plot 4: Step Size vs Iterations
+        axs[1, 1].plot(self.log['iterations'], self.log['step_sizes'], 'm-', label='Step Size')
+        axs[1, 1].set_xlabel('Iteration')
+        axs[1, 1].set_ylabel('Step Size')
+        axs[1, 1].set_title('Step Size Evolution')
+        axs[1, 1].grid(True)
+        axs[1, 1].legend()
+        
+        # Adjust layout and save
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
+    
+    def print_optimization_log(self):
+        """Print a summary of the optimization log."""
+        self.logger.info("Optimization Log Summary:")
+        self.logger.info("=" * 80)
+        self.logger.info(f"{'Iteration':>10} {'Energy':>12} {'Grad Norm':>12} {'Constraint':>12} {'Step Size':>12}")
+        self.logger.info("-" * 80)
+        for i in range(len(self.log['iterations'])):
+            self.logger.info(f"{self.log['iterations'][i]:10d} "
+                  f"{self.log['energies'][i]:12.6e} "
+                  f"{self.log['gradient_norms'][i]:12.6e} "
+                  f"{self.log['constraint_violations'][i]:12.6e} "
+                  f"{self.log['step_sizes'][i]:12.6e}")
+
