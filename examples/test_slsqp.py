@@ -43,99 +43,6 @@ def setup_logging(logfile_path):
     logger.addHandler(ch)
     return logger
 
-def test_slsqp(use_analytic=False):
-    """Test SLSQP optimizer for manifold partition optimization."""
-    config = Config()
-    # Create torus mesh using parameters from config
-    mesh = TorusMesh(
-        n_theta=config.n_theta,
-        n_phi=config.n_phi,
-        R=config.R,
-        r=config.r
-    )
-    
-    # Compute mass and stiffness matrices
-    M, K = mesh.compute_matrices()
-    v = np.sum(M.toarray(), axis=0)  # Mass matrix column sums
-    
-    # Get mesh statistics
-    mesh_stats = mesh.mesh_statistics
-    #print("\nMesh Statistics:")
-    #for key, value in mesh_stats.items():
-    #    print(f"{key}: {value:.6e}")
-    
-    # Calculate epsilon based on mesh size
-    epsilon = mesh_stats['avg_triangle_side']
-    print(f"\nSetting epsilon to average triangle side length: {epsilon:.6e}")
-    
-    # Create optimizer with config values
-    optimizer = SLSQPOptimizer(
-        K=K,
-        M=M,
-        v=v,
-        n_partitions=config.n_partitions,
-        epsilon=epsilon,  # Pass epsilon directly
-        lambda_penalty=config.lambda_penalty,
-        starget=config.starget
-    )
-    print("\nUsing SLSQP with " + ("analytic" if use_analytic else "finite-difference") + " gradients")
-    
-    # Test with multiple random seeds
-    seeds = [42, 123, 456, 789, 101]
-    results = []
-    
-    for seed in seeds:
-        print(f"\n{'='*80}")
-        print(f"Test with seed {seed}")
-        print(f"{'='*80}")
-        
-        # Set random seed
-        np.random.seed(seed)
-        
-        # Generate random initial guess
-        N = len(v)
-        x0 = np.random.rand(N * config.n_partitions)
-        
-        # Run optimization
-        start_time = time.time()
-        x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
-        opt_time = time.time() - start_time
-        optimizer.print_optimization_log()
-        
-        # Store results
-        results.append({
-            'seed': seed,
-            'energy': optimizer.compute_energy(x_opt),
-            'iterations': optimizer.log['iterations'][-1],
-            'time': opt_time,
-            'success': success,
-            'mesh_stats': mesh_stats  # Store mesh statistics with results
-        })
-    
-    # Print results
-    print("\nResults:")
-    print("=" * 80)
-    print(f"{'Seed':>5} {'Energy':>12} {'Iterations':>10} {'Time (s)':>10} {'Success':>10}")
-    print("-" * 80)
-    
-    for r in results:
-        print(f"{r['seed']:5d} "
-              f"{r['energy']:12.6f} "
-              f"{r['iterations']:10d} "
-              f"{r['time']:10.2f} "
-              f"{str(r['success']):>10}")
-    
-    # Plot energy convergence for the best seed
-    best_seed = min(results, key=lambda x: x['energy'])['seed']
-    np.random.seed(best_seed)
-    x0 = np.random.rand(N * config.n_partitions)
-    
-    # Run optimization again for plotting
-    x_opt, _ = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol)
-    
-    # Plot all optimization metrics
-    optimizer.plot_optimization_metrics(save_path='slsqp_optimization_metrics.png')
-
 def plot_refinement_optimization_metrics(
     energies, grad_norms, constraints, steps, level_boundaries, save_path='refinement_optimization_metrics.png',
     n_partitions=None, n_vertices=None, lambda_penalty=None
@@ -176,32 +83,42 @@ def plot_refinement_optimization_metrics(
     plt.savefig(save_path)
     plt.close()
 
-def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices_increment=1000):
+def test_slsqp(config, use_analytic=False, refinement_levels=1, vertices_increment=1000, solution_dir=None):
     """
-    Test SLSQP optimizer with mesh refinement for manifold partition optimization.
+    Test SLSQP optimizer for manifold partition optimization.
     Args:
+        config: Configuration object containing mesh and optimization parameters
         use_analytic: Whether to use analytic gradients
-        refinement_levels: Number of mesh refinement levels
+        refinement_levels: Number of mesh refinement levels (1 means no refinement)
         vertices_increment: Number of vertices to add at each refinement
+        solution_dir: Optional directory for storing solution files (if None, uses local results directory)
     """
-    config = Config()
-    # Initial mesh parameters
-    current_n_theta = config.n_theta
-    current_n_phi = config.n_phi
-    aspect_ratio = current_n_theta / current_n_phi
-    results = []
-    # For unified plotting
-    all_energies, all_grad_norms, all_constraints, all_steps = [], [], [], []
-    level_boundaries = []
-    total_iters = 0
+    # Store initial values for reference
+    initial_n_theta = config.n_theta
+    initial_n_phi = config.n_phi
+    initial_aspect_ratio = initial_n_theta / initial_n_phi
+    
+    # Setup logging and output directory first
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     initial_n_partitions = config.n_partitions
-    initial_n_vertices = current_n_theta * current_n_phi
+    initial_n_vertices = initial_n_theta * initial_n_phi
     outdir = f'results/run_{timestamp}_npart{initial_n_partitions}_nvert{initial_n_vertices}'
     os.makedirs(outdir, exist_ok=True)
     logfile_path = os.path.join(outdir, 'run.log')
     logger = setup_logging(logfile_path)
-    print() 
+    
+    # If solution_dir is provided, ensure it exists
+    if solution_dir:
+        os.makedirs(solution_dir, exist_ok=True)
+        logger.info(f"Solutions will be stored in: {solution_dir}")
+    
+    results = []
+    
+    # For unified plotting
+    all_energies, all_grad_norms, all_constraints, all_steps = [], [], [], []
+    level_boundaries = []
+    total_iters = 0
+    
     logger.info(f"Starting partition optimization with {refinement_levels} refinement levels, {vertices_increment} vertices increment, analytic={use_analytic}")
     logger.info(f"Results will be saved in: {outdir}")
     
@@ -211,12 +128,15 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         logger.info(f"{'='*80}")
         
         # Create mesh with current parameters
+        logger.info(f"Creating mesh with parameters: n_theta={config.n_theta}, n_phi={config.n_phi}, R={config.R}, r={config.r}")
         mesh = TorusMesh(
-            n_theta=current_n_theta,
-            n_phi=current_n_phi,
+            n_theta=config.n_theta,
+            n_phi=config.n_phi,
             R=config.R,
             r=config.r
         )
+        logger.info(f"Mesh created with size: {mesh.n_theta}x{mesh.n_phi}")
+        logger.info(f"Current aspect ratio: {config.n_theta/config.n_phi:.3f}")
         
         # Compute matrices and statistics
         M, K = mesh.compute_matrices()
@@ -225,7 +145,7 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         
         # Calculate epsilon based on mesh size
         epsilon = mesh_stats['avg_triangle_side']
-        print(f"\nSetting epsilon to average triangle side length: {epsilon:.6e}")
+        logger.info(f"Setting epsilon to average triangle side length: {epsilon:.6e}")
         
         # Create optimizer
         optimizer = SLSQPOptimizer(
@@ -237,7 +157,7 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
             lambda_penalty=config.lambda_penalty,
             starget=config.starget
         )
-        print("\nUsing SLSQP with " + ("analytic" if use_analytic else "finite-difference") + " gradients")
+        logger.info(f"Using SLSQP with {'analytic' if use_analytic else 'finite-difference'} gradients")
         
         # Set refinement level attribute for logging
         optimizer.refinement_level = level
@@ -260,7 +180,7 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         # Store results
         results.append({
             'level': level,
-            'mesh_params': {'n_theta': current_n_theta, 'n_phi': current_n_phi, 'R': config.R, 'r': config.r},
+            'mesh_params': {'n_theta': config.n_theta, 'n_phi': config.n_phi, 'R': config.R, 'r': config.r},
             'mesh_stats': mesh_stats,
             'epsilon': epsilon,
             'x_opt': x_opt,
@@ -279,47 +199,54 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         total_iters += len(optimizer.log['energies'])
         level_boundaries.append(total_iters)
         
-        # Debug print
-        logger.debug(f"Level {level+1}: {len(optimizer.log['energies'])} energies, {len(all_energies)} total energies")
-        
         # Print results for this level
         logger.info(f"Results for level {level + 1}:")
-        logger.info(f"Mesh size: {current_n_theta}x{current_n_phi}")
-        logger.info(f"Epsilon: {epsilon:.6e}")
-        logger.info(f"Energy: {results[-1]['energy']:.6e}")
-        logger.info(f"Time: {opt_time:.2f}s")
-        logger.info(f"Success: {success}\n")
+        logger.info(f"  Energy: {results[-1]['energy']:.6e}")
+        logger.info(f"  Time: {opt_time:.2f}s")
+        logger.info(f"  Success: {success}\n")
         
         # Update mesh size for next refinement (add ~vertices_increment vertices)
-        current_vertices = current_n_theta * current_n_phi
-        target_vertices = current_vertices + vertices_increment
-        new_n_phi = int(np.sqrt(target_vertices / aspect_ratio))
-        new_n_theta = int(aspect_ratio * new_n_phi)
-        current_n_theta, current_n_phi = new_n_theta, new_n_phi
+        if level < refinement_levels - 1:  # Don't update on last iteration
+            current_vertices = config.n_theta * config.n_phi
+            target_vertices = current_vertices + vertices_increment
+            
+            # Calculate new dimensions while maintaining aspect ratio
+            new_n_phi = int(np.sqrt(target_vertices / initial_aspect_ratio))
+            new_n_theta = int(initial_aspect_ratio * new_n_phi)
+            
+            logger.info(f"Refining mesh:")
+            logger.info(f"  Current: {config.n_theta}x{config.n_phi} ({current_vertices} vertices)")
+            logger.info(f"  Target: {new_n_theta}x{new_n_phi} ({target_vertices} vertices)")
+            
+            config.n_theta = new_n_theta
+            config.n_phi = new_n_phi
     
     # Print summary of all levels
     logger.info("Refinement Summary:")
     logger.info("=" * 80)
-    logger.info(f"{'Level':>6} {'Mesh Size':>12} {'Epsilon':>12} {'Energy':>12} {'Time (s)':>10}")
+    logger.info(f"{'Level':>6} {'Mesh Size':>12} {'Energy':>12} {'Time (s)':>10}")
     logger.info("-" * 80)
     
     for r in results:
         mesh_size = f"{r['mesh_params']['n_theta']}x{r['mesh_params']['n_phi']}"
-        logger.info(f"{r['level']+1:6d} {mesh_size:>12} {r['epsilon']:12.6e} "
-              f"{r['energy']:12.6e} {r['time']:10.2f}")
+        logger.info(f"{r['level']+1:6d} {mesh_size:>12} {r['energy']:12.6e} {r['time']:10.2f}")
     
-    print()
-    # After the refinement loop, save results
-    # Save final solution and mesh as HDF5
+    # Save results
     final_result = results[-1]
     x_opt = final_result['x_opt']
     mesh = final_result['mesh']
-    with h5py.File(os.path.join(outdir, 'solution.h5'), 'w') as f:
+    
+    # Determine solution file path
+    solution_path = os.path.join(solution_dir if solution_dir else outdir, 'solution.h5')
+    
+    # Save solution and mesh as HDF5
+    with h5py.File(solution_path, 'w') as f:
         f.create_dataset('x_opt', data=x_opt)
         f.create_dataset('vertices', data=mesh.vertices)
         if hasattr(mesh, 'faces'):
             f.create_dataset('faces', data=mesh.faces)
-    # Save input parameters and metadata as YAML
+    
+    # Save metadata as YAML (always in local results directory)
     meta = {
         'input_parameters': {
             'TORUS_PARAMS': {
@@ -343,19 +270,24 @@ def test_slsqp_with_refinement(use_analytic=False, refinement_levels=4, vertices
         'hostname': socket.gethostname(),
         'platform': platform.platform(),
         'python_version': platform.python_version(),
+        'solution_path': solution_path  # Add solution path to metadata
     }
     with open(os.path.join(outdir, 'metadata.yaml'), 'w') as f:
         yaml.dump(meta, f)
-    logger.info(f"Saved solution to {os.path.join(outdir, 'solution.h5')}")
+    
+    logger.info(f"Saved solution to {solution_path}")
     logger.info(f"Saved metadata to {os.path.join(outdir, 'metadata.yaml')}")
-    # Save the plot as well
+    
+    # Save the plot (always in local results directory)
+    plot_path = os.path.join(outdir, 'refinement_optimization_metrics.png')
     plot_refinement_optimization_metrics(
         all_energies, all_grad_norms, all_constraints, all_steps, level_boundaries,
-        save_path=os.path.join(outdir, 'refinement_optimization_metrics.png'),
+        save_path=plot_path,
         n_partitions=initial_n_partitions, n_vertices=initial_n_vertices, lambda_penalty=config.lambda_penalty
     )
-    logger.info(f"Saved plot to {os.path.join(outdir, 'refinement_optimization_metrics.png')}")
+    logger.info(f"Saved plot to {plot_path}")
     print(f"Partition optimization complete. See {logfile_path} for detailed logs.\n")
+    
     return results
 
 def interpolate_solution(old_x, old_mesh, new_mesh):
@@ -383,22 +315,33 @@ def interpolate_solution(old_x, old_mesh, new_mesh):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test SLSQP optimizer for manifold partition optimization')
     parser.add_argument('--analytic', action='store_true', help='Use analytic gradients instead of finite differences')
-    parser.add_argument('--refine', action='store_true', help='Use mesh refinement')
-    parser.add_argument('--refinement-levels', type=int, default=4, help='Number of mesh refinement levels')
+    parser.add_argument('--refinement-levels', type=int, default=1, help='Number of mesh refinement levels (1 means no refinement)')
     parser.add_argument('--vertices-increment', type=int, default=1000, help='Number of vertices to add per refinement')
     parser.add_argument('--input', type=str, help='Path to input YAML file with parameters')
+    parser.add_argument('--solution-dir', type=str, help='Directory for storing solution files (if not provided, uses local results directory)')
     args = parser.parse_args()
 
     # Load parameters from YAML if provided
     if args.input:
+        print(f"\nLoading parameters from {args.input}")
         with open(args.input, 'r') as f:
             params = yaml.safe_load(f)
+        
+        # Create config and check for overridden parameters
         config = Config(params)
+        overridden = {k: v for k, v in params.items() if hasattr(config, k) and getattr(config, k) != v}
+        if overridden:
+            print("\nParameters overridden:")
+            for k, v in overridden.items():
+                print(f"  {k}: {v}")
     else:
         config = Config()
 
-    # Use config attributes for mesh and optimization parameters throughout
-    if args.refine:
-        test_slsqp_with_refinement(use_analytic=args.analytic, refinement_levels=args.refinement_levels, vertices_increment=args.vertices_increment)
-    else:
-        test_slsqp(use_analytic=args.analytic) 
+    # Run the test
+    test_slsqp(
+        config=config,
+        use_analytic=args.analytic,
+        refinement_levels=args.refinement_levels,
+        vertices_increment=args.vertices_increment,
+        solution_dir=args.solution_dir
+    ) 

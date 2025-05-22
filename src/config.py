@@ -17,7 +17,15 @@ class Config:
         self.c = 0.5  # Armijo condition parameter
         self.rho = 0.5  # Step size reduction factor
         self.m = 10  # Number of corrections to store (for LBFGS)
+        
         # Override with params if provided
         if params:
+            print("\nOverriding default parameters with:")
             for k, v in params.items():
-                setattr(self, k, v) 
+                if hasattr(self, k):
+                    old_value = getattr(self, k)
+                    setattr(self, k, v)
+                    print(f"  {k}: {old_value} -> {v}")
+                else:
+                    print(f"  Warning: Unknown parameter '{k}' with value {v}") 
+            print("\n")

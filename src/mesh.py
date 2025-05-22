@@ -675,7 +675,7 @@ class TorusMesh:
         print(f"Number of triangles: {self.n_triangles}")
         print(f"Total surface area: {self.total_area:.6e}")
         print(f"Average triangle area: {self.avg_triangle_area:.6e}")
-        print(f"Estimated average triangle side length: {self.avg_triangle_side:.6e}")
+        print(f"Estimated average triangle side length: {self.avg_triangle_side:.6e}\n")
         
         # Store these values for easy access
         self.mesh_statistics = {
