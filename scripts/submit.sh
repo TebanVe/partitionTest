@@ -5,7 +5,7 @@ INPUT_FILE="parameters/input.yaml"
 OUTPUT_DIR="results"
 REFINEMENT_LEVELS=1
 VERTICES_INCREMENT=1000
-USE_ANALYTIC=false
+USE_ANALYTIC=true
 SOLUTION_DIR="/proj/snic2020-15-36/private/solutions"  # Default solution directory
 TIME_LIMIT="24:00:00"  # Default time limit
 
@@ -90,7 +90,7 @@ module load python/3.9.5
 export PYTHONPATH="\${PYTHONPATH}:\$(pwd)"
 
 # Run the Python script
-python examples/test_slsqp.py \\
+python examples/slsqp_optimizer.py \\
     --input "${INPUT_FILE}" \\
     --refinement-levels "${REFINEMENT_LEVELS}" \\
     --vertices-increment "${VERTICES_INCREMENT}" \\

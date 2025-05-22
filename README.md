@@ -32,101 +32,145 @@ This project implements and analyzes methods for computing mass and stiffness ma
 
 ## Usage
 
-### Matrix Analysis and Visualization
-The project includes several examples in the `examples/` directory:
+### Execution Environments
 
--   **Visualize the Torus Mesh**: Shows the 3D triangulation of the generated torus.
+The code can be run in two different environments:
+
+#### Local Development
+For local development and testing, you can run the scripts directly. There are two ways to configure parameters:
+
+1. **Direct Configuration** (Default):
+   - The code uses default parameters from `src/config.py`
+   - Run the script without any arguments:
+   ```bash
+   python examples/slsqp_optimizer.py
+   ```
+
+2. **Using Input File** (For multiple simulations):
+   - Create a YAML file with your parameters
+   - Use the `--input` flag to specify the file:
+   ```bash
+   python examples/slsqp_optimizer.py --input your_parameters.yaml
+   ```
+
+Additional parameters can be specified as needed:
+```bash
+python examples/slsqp_optimizer.py \
+    --refinement-levels 2 \
+    --vertices-increment 2000 \
+    --analytic
+```
+
+#### Cluster Execution (UPPMAX)
+For running on the UPPMAX cluster, use the provided SLURM submission script. The script supports both default parameters and custom input files:
+
+```bash
+# Basic run with default parameters from config.py
+./scripts/submit.sh
+
+# Run with custom parameters file (useful for running multiple simulations)
+./scripts/submit.sh \
+    --input parameters/input.yaml \
+    --output results \
+    --refinement 2 \
+    --vertices 2000 \
+    --solution-dir /proj/snic2020-15-36/private/solutions \
+    --time "48:00:00" \
+    --analytic
+```
+
+The submission script provides the following options:
+- `--input`: Path to input YAML file (default: parameters/input.yaml)
+- `--output`: Directory for output files (default: results)
+- `--refinement`: Number of refinement levels (default: 1)
+- `--vertices`: Vertices increment per refinement (default: 1000)
+- `--solution-dir`: Directory for solution files (default: /proj/snic2020-15-36/private/solutions)
+- `--time`: Time limit for the job (default: 24:00:00)
+- `--analytic`: Use analytic gradients (flag)
+
+The script will:
+1. Submit your main job
+2. Create a dependent job to calculate execution time
+3. Show you the job names and output file locations
+
+Monitor your jobs using:
+```bash
+squeue -u $USER
+```
+
+Check results in:
+- Main output: `results/{job_name}.out`
+- Main errors: `results/{job_name}.err`
+- Execution time: `results/{job_name}_time.out`
+
+### Optimization Methods
+
+The project implements two main optimization approaches:
+
+#### SLSQP Optimization
+The SLSQP (Sequential Least Squares Programming) optimizer supports both gradient computation methods:
+- Finite-difference gradients (default)
+- Analytic gradients (enabled with `--analytic` flag)
+
+Features:
+- Flexible constraint handling (partition, area, non-negativity)
+- Detailed logging and progress reporting
+- Automatic plotting of optimization metrics
+- Support for both local and cluster execution
+- Easy switching between gradient computation methods
+
+Example usage:
+```bash
+# Using finite-difference gradients (default)
+python examples/slsqp_optimizer.py
+
+# Using analytic gradients
+python examples/slsqp_optimizer.py --analytic
+```
+
+#### L-BFGS Optimization
+The L-BFGS optimizer with projection methods:
+- Multiple projection methods
+- Detailed optimization logging
+- Support for multiple random starts
+- Constraint handling for partitions
+
+### Matrix Analysis and Visualization
+The project includes tools for matrix analysis and visualization:
+
+- **Visualize the Torus Mesh**: Shows the 3D triangulation of the generated torus.
     ```bash
     python -m examples.mesh_visualization
     ```
 
--   **Test Matrix Construction Methods**: Computes mass and stiffness matrices using different methods (Barycentric, Manifold, Stable, Stable FEM), analyzes their eigenvalue properties, and saves comparison plots (`eigenvalue_comparison.png`).
+- **Test Matrix Construction Methods**: Computes mass and stiffness matrices using different methods.
     ```bash
     python -m examples.test_matrix_construction
     ```
-
-### Partition Optimization
-New optimization capabilities have been added:
-
--   **Multiple Start Optimization**: Tests the partition optimization with different random initializations:
-    ```bash
-    python examples/test_torus_optimization_multiple.py
-    ```
-
-### SLSQP-Based Partition Optimization (New)
-
-The repository now includes two new SLSQP-based optimizers for partitioning problems:
-
-- **SLSQPOptimizer**: Uses finite-difference gradients for optimization.
-- **SLSQPOptimizerAnalytic**: Uses analytic gradients for improved performance and accuracy.
-
-Both optimizers support detailed logging and plotting of optimization metrics (energy, gradient norm, constraint violation, step size) for in-depth analysis of the optimization process.
-
-#### Example Usage
-
-To test the SLSQP optimizers on a torus mesh, run:
-
-```bash
-python examples/test_slsqp.py           # Uses finite-difference gradients by default
-python examples/test_slsqp.py --analytic  # Uses analytic gradients
-```
-
-This will run the optimizer, print progress every 100 iterations, and generate a figure `slsqp_optimization_metrics.png` with four subplots showing the evolution of energy, gradient norm, constraint violation, and step size.
-
-#### Features
-- SLSQP optimization with both analytic and finite-difference gradients
-- Flexible constraint handling (partition, area, non-negativity)
-- Detailed logging and progress reporting
-- Automatic plotting of key optimization metrics
-- Easy switching between analytic and finite-difference modes
 
 ## Project Structure
 
 ### Core Components
 -   `src/`: Contains the core implementation.
-    -   `mesh.py`: `TorusMesh` class for generating torus meshes and implementing various matrix computation methods.
-    -   `optimization.py`: Contains the `PartitionOptimizer` class (based on the paper, requires matrix computation).
-    -   `visualization.py`: `PartitionVisualizer` class for creating 3D and 2D visualizations.
-    -   `lbfgs_optimizer.py`: L-BFGS optimization with projection methods and detailed logging.
-    -   `projection_iterative.py`: Iterative projection onto partition constraints.
+    -   `mesh.py`: `TorusMesh` class for generating torus meshes
+    -   `optimization.py`: Contains the `PartitionOptimizer` class
+    -   `visualization.py`: `PartitionVisualizer` class for visualizations
+    -   `lbfgs_optimizer.py`: L-BFGS optimization implementation
+    -   `slsqp_optimizer.py`: SLSQP optimization implementation
+    -   `projection_iterative.py`: Iterative projection methods
 
-### Examples and Tests
--   `examples/`: Contains example scripts demonstrating project features.
-    -   `mesh_visualization.py`: Shows the mesh triangulation.
-    -   `test_matrix_construction.py`: Compares different matrix methods.
-    -   `test_torus_optimization_multiple.py`: Tests partition optimization with multiple starts.
+### Examples and Scripts
+-   `examples/`: Contains example scripts and optimization implementations
+    -   `mesh_visualization.py`: Mesh visualization tools
+    -   `test_matrix_construction.py`: Matrix method comparisons
+    -   `slsqp_optimizer.py`: SLSQP optimization implementation
+-   `scripts/`: Contains utility scripts
+    -   `submit.sh`: SLURM job submission script for cluster execution
 
-## Features
-
-### Matrix Analysis
-- Multiple matrix construction methods (Barycentric, Manifold, Stable, Stable FEM)
-- Eigenvalue analysis and comparison
-- Visualization of matrix properties
-
-### Mesh Generation and Visualization
-- Torus mesh generation with configurable parameters
-- 3D visualization of mesh structure
-- 2D parameter space visualization
-
-### Optimization and Partitioning
-- L-BFGS optimization with constraint handling
-- Multiple projection methods
-- Detailed optimization logging including:
-  - Energy tracking
-  - Gradient norm monitoring
-  - Projection distance tracking
-  - Constraint violation monitoring
-- Support for multiple random starts
-- Constraint handling:
-  - Partition constraints (sum to 1)
-  - Area preservation
-  - Non-negativity constraints
-
-## Configuration and Dependencies
--   `requirements.txt`: Project dependencies for `pip`.
--   `pyproject.toml`: Project configuration and build information.
--   `.python-version`: Specifies Python version (3.9.7) and environment name.
--   `.gitignore`: Specifies intentionally untracked files.
+### Configuration
+-   `parameters/`: Contains configuration files
+    -   `input.yaml`: Default input parameters
+-   `results/`: Directory for output files and results
 
 ## License
 
