@@ -83,15 +83,16 @@ def plot_refinement_optimization_metrics(
     plt.savefig(save_path)
     plt.close()
 
-def test_slsqp(config, use_analytic=False, refinement_levels=1, vertices_increment=1000, solution_dir=None):
+def optimize_partition(config, use_analytic=False, refinement_levels=1, vertices_increment=1000, solution_dir=None):
     """
-    Test SLSQP optimizer for manifold partition optimization.
+    Optimize partition on a torus mesh using SLSQP.
+    
     Args:
         config: Configuration object containing mesh and optimization parameters
         use_analytic: Whether to use analytic gradients
         refinement_levels: Number of mesh refinement levels (1 means no refinement)
         vertices_increment: Number of vertices to add at each refinement
-        solution_dir: Optional directory for storing solution files (if None, uses local results directory)
+        solution_dir: Optional directory to save solution files (for cluster execution)
     """
     # Store initial values for reference
     initial_n_theta = config.n_theta
@@ -338,7 +339,7 @@ if __name__ == "__main__":
         config = Config()
 
     # Run the test
-    test_slsqp(
+    optimize_partition(
         config=config,
         use_analytic=args.analytic,
         refinement_levels=args.refinement_levels,
