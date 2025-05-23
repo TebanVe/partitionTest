@@ -1,6 +1,7 @@
-# Torus Partitioning and Matrix Analysis
+# Manifold partition
 
-This project implements and analyzes methods for computing mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and advanced optimization techniques for partition computation.
+
+This project implements and analyzes methods for partitioing a manifold into equal area regions (cells). Currently only implemented for the torus of revolution. It compute mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and advanced optimization techniques for partition computation.
 
 ## Installation
 
@@ -62,6 +63,8 @@ python examples/find_optimal_partition.py \
 ```
 
 #### Cluster Execution (UPPMAX)
+Ignore the environment settings. Python version and necessary modules will be loaded with the submision script.
+
 For running on the UPPMAX cluster, use the provided SLURM submission script. The script supports both default parameters and custom input files:
 
 ```bash
@@ -74,8 +77,8 @@ For running on the UPPMAX cluster, use the provided SLURM submission script. The
     --output results \
     --refinement 2 \
     --vertices 2000 \
-    --solution-dir /proj/snic2020-15-36/private/solutions \
-    --time "48:00:00" \
+    --solution-dir /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION \
+    --time "12:00:00" \
     --analytic
 ```
 

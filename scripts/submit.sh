@@ -6,8 +6,8 @@ OUTPUT_DIR="results"
 REFINEMENT_LEVELS=1
 VERTICES_INCREMENT=1000
 USE_ANALYTIC=true
-SOLUTION_DIR="/proj/snic2020-15-36/private/solutions"  # Default solution directory
-TIME_LIMIT="24:00:00"  # Default time limit
+SOLUTION_DIR="/proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Default solution directory
+TIME_LIMIT="12:00:00"  # Default time limit
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
