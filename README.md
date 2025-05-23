@@ -87,8 +87,8 @@ The submission script provides the following options:
 - `--output`: Directory for output files (default: results)
 - `--refinement`: Number of refinement levels (default: 1)
 - `--vertices`: Vertices increment per refinement (default: 1000)
-- `--solution-dir`: Directory for solution files (default: /proj/snic2020-15-36/private/solutions)
-- `--time`: Time limit for the job (default: 24:00:00)
+- `--solution-dir`: Directory for solution files (default: /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION)
+- `--time`: Time limit for the job (default: 12:00:00)
 - `--analytic`: Use analytic gradients (flag)
 
 The script will:
@@ -105,6 +105,12 @@ Check results in:
 - Main output: `results/{job_name}.out`
 - Main errors: `results/{job_name}.err`
 - Execution time and metadata: See the `metadata.yaml` file in the corresponding results directory.
+
+**Important:**  
+- When running on the cluster, it is important to provide the `--solution-dir` argument (or use the default set in the submission script).
+- The solution file (`solution.h5`) will be saved in this directory, which should be a project directory with sufficient storage and write permissions (e.g., `/proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION`).
+- If `--solution-dir` is not provided, the default directory set in the submission script will be used.
+- When running locally, the solution file is saved in a timestamped subdirectory of `results/`.
 
 ### Optimization Methods
 
