@@ -43,19 +43,19 @@ For local development and testing, you can run the scripts directly. There are t
    - The code uses default parameters from `src/config.py`
    - Run the script without any arguments:
    ```bash
-   python examples/slsqp_optimizer.py
+   python examples/find_optimal_partition.py
    ```
 
 2. **Using Input File** (For multiple simulations):
    - Create a YAML file with your parameters
    - Use the `--input` flag to specify the file:
    ```bash
-   python examples/slsqp_optimizer.py --input your_parameters.yaml
+   python examples/find_optimal_partition.py --input your_parameters.yaml
    ```
 
 Additional parameters can be specified as needed:
 ```bash
-python examples/slsqp_optimizer.py \
+python examples/find_optimal_partition.py \
     --refinement-levels 2 \
     --vertices-increment 2000 \
     --analytic
@@ -101,7 +101,7 @@ squeue -u $USER
 Check results in:
 - Main output: `results/{job_name}.out`
 - Main errors: `results/{job_name}.err`
-- Execution time: `results/{job_name}_time.out`
+- Execution time and metadata: See the `metadata.yaml` file in the corresponding results directory.
 
 ### Optimization Methods
 
@@ -122,10 +122,10 @@ Features:
 Example usage:
 ```bash
 # Using finite-difference gradients (default)
-python examples/slsqp_optimizer.py
+python examples/find_optimal_partition.py
 
 # Using analytic gradients
-python examples/slsqp_optimizer.py --analytic
+python examples/find_optimal_partition.py --analytic
 ```
 
 #### L-BFGS Optimization
@@ -163,7 +163,7 @@ The project includes tools for matrix analysis and visualization:
 -   `examples/`: Contains example scripts and optimization implementations
     -   `mesh_visualization.py`: Mesh visualization tools
     -   `test_matrix_construction.py`: Matrix method comparisons
-    -   `slsqp_optimizer.py`: SLSQP optimization implementation
+    -   `find_optimal_partition.py`: Main script for finding optimal partitions
 -   `scripts/`: Contains utility scripts
     -   `submit.sh`: SLURM job submission script for cluster execution
 

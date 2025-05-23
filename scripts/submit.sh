@@ -90,7 +90,7 @@ module load python/3.9.5
 export PYTHONPATH="\${PYTHONPATH}:\$(pwd)"
 
 # Run the Python script
-python examples/slsqp_optimizer.py \\
+python examples/find_optimal_partition.py \\
     --input "${INPUT_FILE}" \\
     --refinement-levels "${REFINEMENT_LEVELS}" \\
     --vertices-increment "${VERTICES_INCREMENT}" \\
@@ -108,24 +108,3 @@ rm "$SLURM_SCRIPT"
 echo "Job submitted with name: ${JOB_NAME}"
 echo "Output will be written to: ${OUTPUT_DIR}/${JOB_NAME}.out"
 echo "Errors will be written to: ${OUTPUT_DIR}/${JOB_NAME}.err"
-
-# Submit a dependent job that will run after the main job completes
-DEPENDENT_SCRIPT=$(mktemp)
-cat > "$DEPENDENT_SCRIPT" << EOF
-#!/bin/bash
-#SBATCH -A snic2020-15-36
-#SBATCH -p core
-#SBATCH -n 1
-#SBATCH -t 00:05:00
-#SBATCH -J ${JOB_NAME}_time
-#SBATCH -d afterok:${JOB_ID}
-#SBATCH -o ${OUTPUT_DIR}/${JOB_NAME}_time.out
-#SBATCH -e ${OUTPUT_DIR}/${JOB_NAME}_time.err
-
-end_time=\$(date +%s)
-execution_time=\$((end_time - ${start_time}))
-echo "Total execution time: \${execution_time} seconds"
-EOF
-
-sbatch "$DEPENDENT_SCRIPT"
-rm "$DEPENDENT_SCRIPT"
