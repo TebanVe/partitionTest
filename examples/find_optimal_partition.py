@@ -1,4 +1,10 @@
 import os
+# Control thread usage for numerical libraries to prevent oversubscription
+# These environment variables ensure single-threaded operation for:
+# - OpenMP: Used by many scientific computing libraries
+# - MKL: Intel's Math Kernel Library
+# - OpenBLAS: Basic Linear Algebra Subprograms
+# - NumExpr: Fast numerical expression evaluator
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -237,8 +243,15 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, vertices
     x_opt = final_result['x_opt']
     mesh = final_result['mesh']
     
-    # Determine solution file path
-    solution_path = os.path.join(solution_dir if solution_dir else outdir, 'solution.h5')
+    # Determine solution file path with descriptive naming for cluster runs
+    if solution_dir:
+        # For cluster runs, use descriptive filename with parameters and timestamp
+        solution_filename = f"part{config.n_partitions}_vert{config.n_theta * config.n_phi}_{timestamp}.h5"
+    else:
+        # For local runs, keep the current behavior with simple filename
+        solution_filename = 'solution.h5'
+    
+    solution_path = os.path.join(solution_dir if solution_dir else outdir, solution_filename)
     
     # Save solution and mesh as HDF5
     with h5py.File(solution_path, 'w') as f:
