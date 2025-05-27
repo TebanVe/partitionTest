@@ -1,12 +1,18 @@
 #!/bin/bash
 
+# Project configuration
+PROJECT_FOLDER="snic2020-15-36"  # Project folder for file paths
+PROJECT_ID="uppmax2025-2-192"    # Project ID for SLURM
+PROJECT_BASE="/proj/${PROJECT_FOLDER}"
+
+
 # Default values
 INPUT_FILE="parameters/input.yaml"
 OUTPUT_DIR="results"
 REFINEMENT_LEVELS=1
 VERTICES_INCREMENT=1000
 USE_ANALYTIC=true
-SOLUTION_DIR="/proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Default solution directory
+SOLUTIONS_DIR="${PROJECT_BASE}/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Directory for optimization solutions
 TIME_LIMIT="12:00:00"  # Default time limit
 
 # Parse command line arguments
@@ -69,19 +75,23 @@ fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 JOB_NAME="part${N_PARTITIONS}_vert${TOTAL_VERTICES}_${TIMESTAMP}"
 
+# Create job logs directory with timestamp and job name
+JOB_LOGS_DIR="${OUTPUT_DIR}/job_logs/${JOB_NAME}"
+mkdir -p "$JOB_LOGS_DIR"
+
 # Create a temporary SLURM script
 SLURM_SCRIPT=$(mktemp)
 
 # Write SLURM directives
 cat > "$SLURM_SCRIPT" << EOF
 #!/bin/bash
-#SBATCH -A snic2020-15-36
+#SBATCH -A ${PROJECT_ID}
 #SBATCH -p core
 #SBATCH -n 1
 #SBATCH -t ${TIME_LIMIT}
 #SBATCH -J ${JOB_NAME}
-#SBATCH -o ${OUTPUT_DIR}/${JOB_NAME}.out
-#SBATCH -e ${OUTPUT_DIR}/${JOB_NAME}.err
+#SBATCH -o ${JOB_LOGS_DIR}/${JOB_NAME}.out
+#SBATCH -e ${JOB_LOGS_DIR}/${JOB_NAME}.err
 
 # Load required modules
 module load python/3.9.5
@@ -106,5 +116,7 @@ JOB_ID=$(sbatch "$SLURM_SCRIPT" | awk '{print $4}')
 rm "$SLURM_SCRIPT"
 
 echo "Job submitted with name: ${JOB_NAME}"
-echo "Output will be written to: ${OUTPUT_DIR}/${JOB_NAME}.out"
-echo "Errors will be written to: ${OUTPUT_DIR}/${JOB_NAME}.err"
+echo "Job ID: ${JOB_ID}"
+echo "SLURM logs will be written to: ${JOB_LOGS_DIR}"
+echo "Output file: ${JOB_LOGS_DIR}/${JOB_NAME}.out"
+echo "Error file: ${JOB_LOGS_DIR}/${JOB_NAME}.err"
