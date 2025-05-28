@@ -73,7 +73,7 @@ fi
 
 # Generate a unique job name with more information
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-JOB_NAME="part${N_PARTITIONS}_vert${TOTAL_VERTICES}_${TIMESTAMP}"
+JOB_NAME="${TIMESTAMP}_npart${N_PARTITIONS}_nvert${TOTAL_VERTICES}"
 
 # Create job logs directory with timestamp and job name
 JOB_LOGS_DIR="${OUTPUT_DIR}/job_logs/${JOB_NAME}"
