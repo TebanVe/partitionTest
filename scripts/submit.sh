@@ -12,7 +12,7 @@ OUTPUT_DIR="results"
 REFINEMENT_LEVELS=1
 VERTICES_INCREMENT=1000
 USE_ANALYTIC=true
-SOLUTIONS_DIR="${PROJECT_BASE}/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Directory for optimization solutions
+SOLUTION_DIR="${PROJECT_BASE}/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Directory for optimization solutions
 TIME_LIMIT="12:00:00"  # Default time limit
 
 # Parse command line arguments
