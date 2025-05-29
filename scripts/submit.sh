@@ -5,17 +5,15 @@ PROJECT_FOLDER="snic2020-15-36"  # Project folder for file paths
 PROJECT_ID="uppmax2025-2-192"    # Project ID for SLURM
 PROJECT_BASE="/proj/${PROJECT_FOLDER}"
 
-
 # Default values
 INPUT_FILE="parameters/input.yaml"
 OUTPUT_DIR="results"
-REFINEMENT_LEVELS=1
-VERTICES_INCREMENT=1000
-USE_ANALYTIC=true
+REFINEMENT_LEVELS=""
+USE_ANALYTIC=""
 SOLUTION_DIR="${PROJECT_BASE}/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Directory for optimization solutions
 TIME_LIMIT="12:00:00"  # Default time limit
 
-# Parse command line arguments
+# Parse command line arguments (only those that can be passed to Python or are needed for SLURM/logs)
 while [[ $# -gt 0 ]]; do
     case $1 in
         --input)
@@ -26,12 +24,8 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_DIR="$2"
             shift 2
             ;;
-        --refinement)
+        --refinement-levels)
             REFINEMENT_LEVELS="$2"
-            shift 2
-            ;;
-        --vertices)
-            VERTICES_INCREMENT="$2"
             shift 2
             ;;
         --solution-dir)
@@ -43,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --analytic)
-            USE_ANALYTIC=true
+            USE_ANALYTIC="--analytic"
             shift
             ;;
         *)
@@ -57,15 +51,30 @@ done
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$SOLUTION_DIR"
 
-# Read parameters from YAML file
+# Extract info from YAML for job naming (not for passing to Python)
 if [ -f "$INPUT_FILE" ]; then
-    # Extract n_theta and n_phi using grep and awk
     N_THETA=$(grep "n_theta:" "$INPUT_FILE" | awk '{print $2}')
     N_PHI=$(grep "n_phi:" "$INPUT_FILE" | awk '{print $2}')
     N_PARTITIONS=$(grep "n_partitions:" "$INPUT_FILE" | awk '{print $2}')
-    
-    # Calculate total vertices
-    TOTAL_VERTICES=$((N_THETA * N_PHI))
+    LAMBDA=$(grep "lambda_penalty:" "$INPUT_FILE" | awk '{print $2}')
+    SEED=$(grep "seed:" "$INPUT_FILE" | awk '{print $2}')
+    N_THETA_INCREMENT=$(grep "n_theta_increment:" "$INPUT_FILE" | awk '{print $2}')
+    N_PHI_INCREMENT=$(grep "n_phi_increment:" "$INPUT_FILE" | awk '{print $2}')
+    REFINEMENT_LEVELS_YAML=$(grep "refinement_levels:" "$INPUT_FILE" | awk '{print $2}')
+    # Use CLI override if provided
+    if [ -z "$REFINEMENT_LEVELS" ]; then
+        REFINEMENT_LEVELS="$REFINEMENT_LEVELS_YAML"
+    fi
+    # Calculate final n_theta and n_phi
+    if [ "$REFINEMENT_LEVELS" -gt 1 ]; then
+        FINAL_N_THETA=$((N_THETA + (REFINEMENT_LEVELS - 1) * N_THETA_INCREMENT))
+        FINAL_N_PHI=$((N_PHI + (REFINEMENT_LEVELS - 1) * N_PHI_INCREMENT))
+        N_THETA_INFO="${N_THETA}-${FINAL_N_THETA}_inct${N_THETA_INCREMENT}"
+        N_PHI_INFO="${N_PHI}-${FINAL_N_PHI}_incp${N_PHI_INCREMENT}"
+    else
+        N_THETA_INFO="${N_THETA}"
+        N_PHI_INFO="${N_PHI}"
+    fi
 else
     echo "Error: Input file $INPUT_FILE not found"
     exit 1
@@ -73,7 +82,7 @@ fi
 
 # Generate a unique job name with more information
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-JOB_NAME="${TIMESTAMP}_npart${N_PARTITIONS}_nvert${TOTAL_VERTICES}"
+JOB_NAME="${TIMESTAMP}_npart${N_PARTITIONS}_nt${N_THETA_INFO}_np${N_PHI_INFO}_lam${LAMBDA}_seed${SEED}"
 
 # Create job logs directory with timestamp and job name
 JOB_LOGS_DIR="${OUTPUT_DIR}/job_logs/${JOB_NAME}"
@@ -100,12 +109,11 @@ module load python/3.9.5
 export PYTHONPATH="\${PYTHONPATH}:\$(pwd)"
 
 # Run the Python script
-python examples/find_optimal_partition.py \\
-    --input "${INPUT_FILE}" \\
-    --refinement-levels "${REFINEMENT_LEVELS}" \\
-    --vertices-increment "${VERTICES_INCREMENT}" \\
-    --solution-dir "${SOLUTION_DIR}" \\
-    $([ "$USE_ANALYTIC" = true ] && echo "--analytic")
+python examples/find_optimal_partition.py \
+    --input "${INPUT_FILE}" \
+    --refinement-levels "${REFINEMENT_LEVELS}" \
+    --solution-dir "${SOLUTION_DIR}" \
+    ${USE_ANALYTIC}
 EOF
 
 # Submit the job

@@ -1,7 +1,7 @@
 # Manifold partition
 
 
-This project implements and analyzes methods for partitioing a manifold into equal area regions (cells). Currently only implemented for the torus of revolution. It compute mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and advanced optimization techniques for partition computation.
+This project implements and analyzes methods for partitioning a manifold into equal area regions (cells). Currently only implemented for the torus of revolution. It computes mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and advanced optimization techniques for partition computation.
 
 ## Installation
 
@@ -48,22 +48,39 @@ For local development and testing, you can run the scripts directly. There are t
    ```
 
 2. **Using Input File** (For multiple simulations):
-   - Create a YAML file with your parameters
+   - Create a YAML file with your parameters (see example below)
    - Use the `--input` flag to specify the file:
    ```bash
    python examples/find_optimal_partition.py --input your_parameters.yaml
    ```
 
-Additional parameters can be specified as needed:
-```bash
-python examples/find_optimal_partition.py \
-    --refinement-levels 2 \
-    --vertices-increment 2000 \
-    --analytic
-```
+   Example `parameters/input.yaml`:
+   ```yaml
+   n_partitions: 3
+   n_theta: 8
+   n_phi: 4
+   R: 1.0
+   r: 0.6
+   lambda_penalty: 0.01
+   max_iter: 15000
+   tol: 1e-6
+   refinement_levels: 2
+   n_theta_increment: 2
+   n_phi_increment: 1
+   use_analytic: true
+   starget: null
+   seed: 42
+   ```
+
+   **Note:** All mesh and optimization parameters (including mesh increments) are now set in the YAML file. You do not pass mesh increments as command-line arguments.
+
+   Additional runtime options:
+   - `--refinement-levels`: Override the number of refinement levels (optional)
+   - `--solution-dir`: Directory for storing solution files (optional)
+   - `--analytic`: Use analytic gradients (flag, optional)
 
 #### Cluster Execution (UPPMAX)
-Ignore the environment settings. Python version and necessary modules will be loaded with the submision script.
+Python version and necessary modules will be loaded with the submission script.
 
 For running on the UPPMAX cluster, use the provided SLURM submission script. The script supports both default parameters and custom input files:
 
@@ -75,8 +92,7 @@ For running on the UPPMAX cluster, use the provided SLURM submission script. The
 ./scripts/submit.sh \
     --input parameters/input.yaml \
     --output results \
-    --refinement 2 \
-    --vertices 2000 \
+    --refinement-levels 2 \
     --solution-dir /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION \
     --time "12:00:00" \
     --analytic
@@ -85,16 +101,16 @@ For running on the UPPMAX cluster, use the provided SLURM submission script. The
 The submission script provides the following options:
 - `--input`: Path to input YAML file (default: parameters/input.yaml)
 - `--output`: Directory for output files (default: results)
-- `--refinement`: Number of refinement levels (default: 1)
-- `--vertices`: Vertices increment per refinement (default: 1000)
+- `--refinement-levels`: Number of refinement levels (overrides YAML, optional)
 - `--solution-dir`: Directory for solution files (default: /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION)
 - `--time`: Time limit for the job (default: 12:00:00)
-- `--analytic`: Use analytic gradients (flag)
+- `--analytic`: Use analytic gradients (flag, optional)
+
+**Note:** All mesh and optimization parameters (including mesh increments) are set in the YAML file. You do not pass mesh increments as command-line arguments.
 
 The script will:
 1. Submit your main job
-2. Create a dependent job to calculate execution time
-3. Show you the job names and output file locations
+2. Show you the job names and output file locations
 
 Monitor your jobs using:
 ```bash
@@ -102,8 +118,8 @@ squeue -u $USER
 ```
 
 Check results in:
-- Main output: `results/{job_name}.out`
-- Main errors: `results/{job_name}.err`
+- Main output: `results/job_logs/{job_name}/{job_name}.out`
+- Main errors: `results/job_logs/{job_name}/{job_name}.err`
 - Execution time and metadata: See the `metadata.yaml` file in the corresponding results directory.
 
 **Important:**  
@@ -119,7 +135,7 @@ The project implements two main optimization approaches:
 #### SLSQP Optimization
 The SLSQP (Sequential Least Squares Programming) optimizer supports both gradient computation methods:
 - Finite-difference gradients (default)
-- Analytic gradients (enabled with `--analytic` flag)
+- Analytic gradients (enabled with `--analytic` flag or `use_analytic: true` in YAML)
 
 Features:
 - Flexible constraint handling (partition, area, non-negativity)
