@@ -8,8 +8,6 @@ PROJECT_BASE="/proj/${PROJECT_FOLDER}"
 # Default values
 INPUT_FILE="parameters/input.yaml"
 OUTPUT_DIR="results"
-REFINEMENT_LEVELS=""
-USE_ANALYTIC=""
 SOLUTION_DIR="${PROJECT_BASE}/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Directory for optimization solutions
 TIME_LIMIT="12:00:00"  # Default time limit
 
@@ -24,10 +22,6 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_DIR="$2"
             shift 2
             ;;
-        --refinement-levels)
-            REFINEMENT_LEVELS="$2"
-            shift 2
-            ;;
         --solution-dir)
             SOLUTION_DIR="$2"
             shift 2
@@ -35,10 +29,6 @@ while [[ $# -gt 0 ]]; do
         --time)
             TIME_LIMIT="$2"
             shift 2
-            ;;
-        --analytic)
-            USE_ANALYTIC="--analytic"
-            shift
             ;;
         *)
             echo "Unknown option: $1"
@@ -60,11 +50,7 @@ if [ -f "$INPUT_FILE" ]; then
     SEED=$(grep "seed:" "$INPUT_FILE" | awk '{print $2}')
     N_THETA_INCREMENT=$(grep "n_theta_increment:" "$INPUT_FILE" | awk '{print $2}')
     N_PHI_INCREMENT=$(grep "n_phi_increment:" "$INPUT_FILE" | awk '{print $2}')
-    REFINEMENT_LEVELS_YAML=$(grep "refinement_levels:" "$INPUT_FILE" | awk '{print $2}')
-    # Use CLI override if provided
-    if [ -z "$REFINEMENT_LEVELS" ]; then
-        REFINEMENT_LEVELS="$REFINEMENT_LEVELS_YAML"
-    fi
+    REFINEMENT_LEVELS=$(grep "refinement_levels:" "$INPUT_FILE" | awk '{print $2}')
     # Calculate final n_theta and n_phi
     if [ "$REFINEMENT_LEVELS" -gt 1 ]; then
         FINAL_N_THETA=$((N_THETA + (REFINEMENT_LEVELS - 1) * N_THETA_INCREMENT))
@@ -111,9 +97,7 @@ export PYTHONPATH="\${PYTHONPATH}:\$(pwd)"
 # Run the Python script
 python examples/find_optimal_partition.py \
     --input "${INPUT_FILE}" \
-    --refinement-levels "${REFINEMENT_LEVELS}" \
-    --solution-dir "${SOLUTION_DIR}" \
-    ${USE_ANALYTIC}
+    --solution-dir "${SOLUTION_DIR}"
 EOF
 
 # Submit the job

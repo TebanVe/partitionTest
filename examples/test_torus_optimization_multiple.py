@@ -5,12 +5,19 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lbfgs_optimizer import LBFGSOptimizer
 from src.mesh import TorusMesh
-from src.config import TORUS_PARAMS, PROBLEM_PARAMS, OPTIMIZATION_PARAMS
+from src.config import Config
+
+config = Config()
 
 def test_torus_optimization_multiple():
     """Test LBFGS optimizer on torus mesh with multiple random starts."""
     # Create torus mesh
-    mesh = TorusMesh(**TORUS_PARAMS)
+    mesh = TorusMesh(
+        n_theta=config.n_theta,
+        n_phi=config.n_phi,
+        R=config.R,
+        r=config.r
+    )
     mesh.compute_matrices()
     
     # Get mass and stiffness matrices
@@ -18,14 +25,14 @@ def test_torus_optimization_multiple():
     K = mesh.stiffness_matrix
     v = np.array(M.sum(axis=0)).flatten()  # Mass matrix column sums
     
-    # Initialize optimizer with original parameters
+    # Initialize optimizer with config parameters
     optimizer = LBFGSOptimizer(
         K=K,
         M=M,
         v=v,
-        n_partitions=OPTIMIZATION_PARAMS['n_partitions'],
-        epsilon=PROBLEM_PARAMS['epsilon'],
-        lambda_penalty=PROBLEM_PARAMS['lambda_penalty'],  # Use original lambda value
+        n_partitions=config.n_partitions,
+        epsilon=None,  # Set appropriately if needed
+        lambda_penalty=config.lambda_penalty,  # Use config lambda value
         enable_lambda_tuning=False  # Disable automatic tuning
     )
     
@@ -43,13 +50,13 @@ def test_torus_optimization_multiple():
         
         # Generate random initial guess
         N = len(v)
-        x0 = np.random.rand(N * OPTIMIZATION_PARAMS['n_partitions'])
+        x0 = np.random.rand(N * config.n_partitions)
         
         # Run optimization
         x_opt, energy, info = optimizer.optimize(
             x0=x0,
-            max_iter=PROBLEM_PARAMS['max_iter'],
-            tol=PROBLEM_PARAMS['tol']
+            max_iter=config.max_iter,
+            tol=config.tol
         )
         
         # Compute energy before final projection
