@@ -27,6 +27,8 @@ class TorusMesh:
         
         # Generate triangles
         self.triangles = self._generate_triangles()
+
+        self.faces = self.triangles
         
         # Compute triangle statistics
         self._compute_triangle_statistics()

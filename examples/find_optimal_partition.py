@@ -204,8 +204,7 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
     with h5py.File(solution_path, 'w') as f:
         f.create_dataset('x_opt', data=x_opt)
         f.create_dataset('vertices', data=mesh.vertices)
-        if hasattr(mesh, 'faces'):
-            f.create_dataset('faces', data=mesh.faces)
+        f.create_dataset('faces', data=mesh.faces, dtype='i4')  # or 'i8' for 64-bit integers
     meta = {
         'input_parameters': {
             'TORUS_PARAMS': {
