@@ -1,7 +1,7 @@
 # Manifold partition
 
 
-This project implements and analyzes methods for partitioning a manifold into equal area regions (cells). Currently only implemented for the torus of revolution. It computes mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and advanced optimization techniques for partition computation.
+This project implements and analyzes methods for partitioning a manifold into equal area regions (cells). Currently only implemented for the torus of revolution. It computes mass and stiffness matrices on triangulated torus manifolds, based on the paper "Partitions of Minimal Length on Manifolds" by Bogosel et al. It includes tools for visualizing the torus mesh, matrix analysis, and different optimization techniques for partition computation.
 
 ## Installation
 
@@ -10,7 +10,7 @@ This project implements and analyzes methods for partitioning a manifold into eq
     - Install the `pyenv-virtualenv` plugin: [pyenv-virtualenv installation guide](https://github.com/pyenv/pyenv-virtualenv#installation)
     - This project uses Python 3.9.7 as specified in the `.python-version` file
 
-2.  **Set up Python Environment**: 
+2.  **Set up Python Environment if Working Locally**: 
     ```bash
     # Install the required Python version if you don't have it
     pyenv install 3.9.7
@@ -75,9 +75,7 @@ For local development and testing, you can run the scripts directly. There are t
    **Note:** All mesh and optimization parameters (including mesh increments) are now set in the YAML file. You do not pass mesh increments as command-line arguments.
 
    Additional runtime options:
-   - `--refinement-levels`: Override the number of refinement levels (optional)
    - `--solution-dir`: Directory for storing solution files (optional)
-   - `--analytic`: Use analytic gradients (flag, optional)
 
 #### Cluster Execution (UPPMAX)
 Python version and necessary modules will be loaded with the submission script.
@@ -92,19 +90,15 @@ For running on the UPPMAX cluster, use the provided SLURM submission script. The
 ./scripts/submit.sh \
     --input parameters/input.yaml \
     --output results \
-    --refinement-levels 2 \
     --solution-dir /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION \
-    --time "12:00:00" \
-    --analytic
+    --time "12:00:00"
 ```
 
 The submission script provides the following options:
 - `--input`: Path to input YAML file (default: parameters/input.yaml)
 - `--output`: Directory for output files (default: results)
-- `--refinement-levels`: Number of refinement levels (overrides YAML, optional)
 - `--solution-dir`: Directory for solution files (default: /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION)
 - `--time`: Time limit for the job (default: 12:00:00)
-- `--analytic`: Use analytic gradients (flag, optional)
 
 **Note:** All mesh and optimization parameters (including mesh increments) are set in the YAML file. You do not pass mesh increments as command-line arguments.
 
@@ -120,11 +114,11 @@ squeue -u $USER
 Check results in:
 - Main output: `results/job_logs/{job_name}/{job_name}.out`
 - Main errors: `results/job_logs/{job_name}/{job_name}.err`
-- Execution time and metadata: See the `metadata.yaml` file in the corresponding results directory.
+- Execution time and metadata: See the `results/metadata.yaml` file in the corresponding results directory.
 
 **Important:**  
 - When running on the cluster, it is important to provide the `--solution-dir` argument (or use the default set in the submission script).
-- The solution file (`solution.h5`) will be saved in this directory, which should be a project directory with sufficient storage and write permissions (e.g., `/proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION`).
+- The solution file (e.g., `part<N>_nt<NTHETAINFO>_np<NPHIINFO>_lam<LAMBDA>_seed<SEED>_<TIMESTAMP>.h5`) will be saved in this directory, with a name that encodes the number of partitions, mesh parameters, lambda, seed, and timestamp (see find_optimal_partition.py and submit.sh for details).
 - If `--solution-dir` is not provided, the default directory set in the submission script will be used.
 - When running locally, the solution file is saved in a timestamped subdirectory of `results/`.
 
@@ -135,7 +129,7 @@ The project implements two main optimization approaches:
 #### SLSQP Optimization
 The SLSQP (Sequential Least Squares Programming) optimizer supports both gradient computation methods:
 - Finite-difference gradients (default)
-- Analytic gradients (enabled with `--analytic` flag or `use_analytic: true` in YAML)
+- Analytic gradients (enabled by setting `use_analytic: true` in YAML)
 
 Features:
 - Flexible constraint handling (partition, area, non-negativity)
@@ -150,7 +144,7 @@ Example usage:
 python examples/find_optimal_partition.py
 
 # Using analytic gradients
-python examples/find_optimal_partition.py --analytic
+python examples/find_optimal_partition.py --input parameters/input.yaml
 ```
 
 #### L-BFGS Optimization
@@ -178,7 +172,6 @@ The project includes tools for matrix analysis and visualization:
 ### Core Components
 -   `src/`: Contains the core implementation.
     -   `mesh.py`: `TorusMesh` class for generating torus meshes
-    -   `optimization.py`: Contains the `PartitionOptimizer` class
     -   `visualization.py`: `PartitionVisualizer` class for visualizations
     -   `lbfgs_optimizer.py`: L-BFGS optimization implementation
     -   `slsqp_optimizer.py`: SLSQP optimization implementation
