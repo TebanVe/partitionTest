@@ -39,18 +39,35 @@ class ContourAnalyzer:
         
     def load_results(self) -> None:
         """Load the optimization results from the HDF5 file."""
-        h5_path = next(self.result_path.glob("*.h5"))
-        self.logger.info(f"Loading results from {h5_path}")
-        
-        with h5py.File(h5_path, 'r') as f:
-            # Load solution vector
-            self.x_opt = f['x_opt'][:]
-            # Load mesh information
-            self.mesh = {
-                'vertices': f['vertices'][:],
-                'faces': f['faces'][:]
-            }
+        try:
+            # First check if the path is a directory
+            if not self.result_path.is_dir():
+                raise NotADirectoryError(f"Path {self.result_path} is not a directory")
+                
+            # Look for .h5 files in the directory
+            h5_files = list(self.result_path.glob("*.h5"))
+            if not h5_files:
+                available_files = list(self.result_path.glob("*"))
+                self.logger.error(f"No .h5 file found in {self.result_path}")
+                self.logger.error(f"Available files: {[f.name for f in available_files]}")
+                raise FileNotFoundError(f"No .h5 file found in {self.result_path}. Available files: {[f.name for f in available_files]}")
             
+            h5_path = h5_files[0]  # Take the first .h5 file found
+            self.logger.info(f"Loading results from {h5_path}")
+            
+            with h5py.File(h5_path, 'r') as f:
+                # Load solution vector
+                self.x_opt = f['x_opt'][:]
+                # Load mesh information
+                self.mesh = {
+                    'vertices': f['vertices'][:],
+                    'faces': f['faces'][:]
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error loading results: {e}")
+            raise
+        
         # Reshape x_opt into density functions
         n_vertices = len(self.mesh['vertices'])
         n_partitions = self.x_opt.shape[0] // n_vertices

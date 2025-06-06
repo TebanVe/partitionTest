@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # Visualization logic
     if args.solution:
         # Visualize torus with partition contours
-        analyzer = ContourAnalyzer(os.path.dirname(args.solution))
+        analyzer = ContourAnalyzer(args.solution)
         analyzer.load_results()
         contours = analyzer.extract_contours()
         mesh = analyzer.mesh
