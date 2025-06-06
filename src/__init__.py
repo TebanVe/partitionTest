@@ -7,8 +7,7 @@ __version__ = "0.1.0"
 from .mesh import TorusMesh
 from .slsqp_optimizer import SLSQPOptimizer
 from .config import Config
-from .visualization import PartitionVisualizer
 
-__all__ = ['TorusMesh', 'SLSQPOptimizer', 'Config', 'PartitionVisualizer']
+__all__ = ['TorusMesh', 'SLSQPOptimizer', 'Config']
 
 # This file makes the src directory a Python package 
