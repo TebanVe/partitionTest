@@ -51,7 +51,7 @@ def setup_logging(logfile_path):
 
 def plot_refinement_optimization_metrics(
     energies, grad_norms, constraints, steps, level_boundaries, save_path='refinement_optimization_metrics.png',
-    n_partitions=None, n_theta_info=None, n_phi_info=None, lambda_penalty=None, seed=None
+    n_partitions=None, n_theta_info=None, n_phi_info=None, lambda_penalty=None, seed=None, use_analytic=None
 ):
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     x = range(len(energies))
@@ -84,7 +84,8 @@ def plot_refinement_optimization_metrics(
             ax.axvline(boundary, color='k', linestyle='--', alpha=0.5)
     # Add a meaningful title at the top
     if n_partitions is not None and n_theta_info is not None and n_phi_info is not None and lambda_penalty is not None and seed is not None:
-        fig.suptitle(f"Partition Optimization: n_partitions={n_partitions}, n_theta={n_theta_info}, n_phi={n_phi_info}, lambda={lambda_penalty}, seed={seed}", fontsize=16)
+        analytic_str = f", analytic_gradients={'yes' if use_analytic else 'no'}" if use_analytic is not None else ""
+        fig.suptitle(f"Partition Optimization: n_partitions={n_partitions}, n_theta={n_theta_info}, n_phi={n_phi_info}, lambda={lambda_penalty}, seed={seed}{analytic_str}", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(save_path)
     plt.close()
@@ -239,7 +240,7 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
     plot_refinement_optimization_metrics(
         all_energies, all_grad_norms, all_constraints, all_steps, level_boundaries,
         save_path=plot_path,
-        n_partitions=initial_n_partitions, n_theta_info=n_theta_info, n_phi_info=n_phi_info, lambda_penalty=config.lambda_penalty, seed=config.seed
+        n_partitions=initial_n_partitions, n_theta_info=n_theta_info, n_phi_info=n_phi_info, lambda_penalty=config.lambda_penalty, seed=config.seed, use_analytic=config.use_analytic
     )
     logger.info(f"Saved plot to {plot_path}")
     print(f"Partition optimization complete. See {logfile_path} for detailed logs.\n")
