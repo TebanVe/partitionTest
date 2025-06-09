@@ -12,9 +12,8 @@ from typing import Dict, List, Tuple
 import yaml
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.config import Config   
 
-from src.plot_utils import plot_torus_with_contours_pyvista
+from .config import Config
 
 class ContourAnalyzer:
     """Class to analyze and visualize contours from optimization results using indicator functions."""

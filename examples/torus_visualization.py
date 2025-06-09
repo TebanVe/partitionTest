@@ -7,10 +7,7 @@ import numpy as np
 import argparse
 import yaml
 import datetime
-from src.mesh import TorusMesh
-from src.config import Config
-from src.plot_utils import plot_torus_with_contours_pyvista
-from src.find_contours import ContourAnalyzer
+from src import TorusMesh, Config, ContourAnalyzer, plot_torus_with_contours_pyvista
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Visualize torus mesh and partitions (PyVista only)')

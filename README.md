@@ -167,7 +167,31 @@ The project includes tools for matrix analysis and visualization:
     python -m examples.test_matrix_construction
     ```
 
-## Project Structure
+## Visualization of Partitions and Mesh
+
+You can visualize the torus mesh and overlay partition contours using the new script:
+
+### Visualize Torus Mesh Only
+```bash
+python examples/torus_visualization.py --input parameters/input.yaml
+```
+
+### Visualize Partition Contours from a Solution File
+```bash
+python examples/torus_visualization.py --input parameters/input.yaml --solution results/<run_dir> --output-dir visualizations
+```
+- Replace `<run_dir>` with the directory containing your solution `.h5` file.
+- The script will save a visualization image in the specified output directory.
+
+## Public API
+
+The following classes and functions are now available directly from the `src` package:
+
+```python
+from src import ContourAnalyzer, plot_torus_with_contours_pyvista
+```
+
+## Updated Project Structure
 
 ### Core Components
 -   `src/`: Contains the core implementation.
@@ -176,9 +200,12 @@ The project includes tools for matrix analysis and visualization:
     -   `lbfgs_optimizer.py`: L-BFGS optimization implementation
     -   `slsqp_optimizer.py`: SLSQP optimization implementation
     -   `projection_iterative.py`: Iterative projection methods
+    -   `find_contours.py`: `ContourAnalyzer` for extracting and analyzing partition contours
+    -   `plot_utils.py`: Visualization utilities using PyVista
 
 ### Examples and Scripts
 -   `examples/`: Contains example scripts and optimization implementations
+    -   `torus_visualization.py`: Visualize torus mesh and partition contours
     -   `mesh_visualization.py`: Mesh visualization tools
     -   `test_matrix_construction.py`: Matrix method comparisons
     -   `find_optimal_partition.py`: Main script for finding optimal partitions
