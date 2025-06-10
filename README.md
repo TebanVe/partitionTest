@@ -70,9 +70,17 @@ For local development and testing, you can run the scripts directly. There are t
    use_analytic: true
    starget: null
    seed: 42
+   # Mesh refinement convergence criteria (used for logging and advanced control)
+   refine_patience: 30
+   refine_delta_energy: 1e-4
+   refine_grad_tol: 1e-2
+   refine_constraint_tol: 1e-2
    ```
 
-   **Note:** All mesh and optimization parameters (including mesh increments) are now set in the YAML file. You do not pass mesh increments as command-line arguments.
+   **Note:**
+   - Mesh refinement is now always performed at each level if `refinement_levels > 1`, regardless of convergence criteria, ensuring the mesh is updated as expected.
+   - Projection/normalization of the initial guess is only performed for the first random initialization; subsequent levels use the previous solution as-is, preventing unnecessary metric jumps.
+   - The mesh refinement criteria parameters are included for completeness and advanced control, but by default, mesh refinement will occur at each level.
 
    Additional runtime options:
    - `--solution-dir`: Directory for storing solution files (optional)
