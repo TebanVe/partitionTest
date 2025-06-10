@@ -23,6 +23,11 @@ class Config:
         self.n_theta_increment = 2  # Number of n_theta to add per refinement
         self.n_phi_increment = 1    # Number of n_phi to add per refinement
         self.use_analytic = True  # Whether to use analytic gradients
+        # Mesh refinement convergence criteria (defaults)
+        self.refine_patience = 30
+        self.refine_delta_energy = 1e-4
+        self.refine_grad_tol = 1e-2
+        self.refine_constraint_tol = 1e-2
         
         # Override with params if provided
         if params:

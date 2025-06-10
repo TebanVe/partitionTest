@@ -6,6 +6,9 @@ from .mesh import TorusMesh  # Add import for type hints
 import matplotlib.pyplot as plt
 import logging
 
+class RefinementTriggered(Exception):
+    pass
+
 class SLSQPOptimizer:
     def __init__(self, 
                  K: np.ndarray,  # Stiffness matrix
@@ -14,7 +17,11 @@ class SLSQPOptimizer:
                  n_partitions: int,
                  epsilon: float,  # Interface width parameter
                  lambda_penalty: float = 1.0,
-                 starget: Optional[float] = None):
+                 starget: Optional[float] = None,
+                 refine_patience: int = 30,
+                 refine_delta_energy: float = 1e-4,
+                 refine_grad_tol: float = 1e-2,
+                 refine_constraint_tol: float = 1e-2):
         """
         Initialize the SLSQP optimizer for manifold partition optimization.
         
@@ -26,6 +33,10 @@ class SLSQPOptimizer:
             epsilon: Interface width parameter
             lambda_penalty: Initial penalty weight for constant functions
             starget: Target standard deviation (if None, computed from area)
+            refine_patience: Patience for hybrid refinement trigger
+            refine_delta_energy: Energy threshold for refinement
+            refine_grad_tol: Gradient tolerance for refinement
+            refine_constraint_tol: Constraint tolerance for refinement
         """
         self.K = K
         self.M = M
@@ -46,6 +57,10 @@ class SLSQPOptimizer:
         else:
             self.starget = starget
 
+        self.refine_patience = refine_patience
+        self.refine_delta_energy = refine_delta_energy
+        self.refine_grad_tol = refine_grad_tol
+        self.refine_constraint_tol = refine_constraint_tol
             
         # Initialize logging
         self.log = {
@@ -192,25 +207,6 @@ class SLSQPOptimizer:
         # Store initial point
         self.log['x_history'].append(x0.copy())
         
-        # Project initial point
-        N = len(self.v)
-        n = self.n_partitions
-        x0_reshaped = x0.reshape(N, n)
-        x0_reshaped = np.clip(x0_reshaped, 0, 1)  # Enforce bounds [0,1]
-        
-        # Normalize rows
-        row_sums = np.sum(x0_reshaped, axis=1, keepdims=True)
-        x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-10)
-        
-        # Scale to satisfy area constraints approximately
-        target_area = self.total_area / n
-        current_areas = self.v @ x0_reshaped
-        area_scales = target_area / np.maximum(current_areas, target_area/10)
-        for i in range(n):
-            x0_reshaped[:, i] *= area_scales[i]
-        
-        x0 = x0_reshaped.flatten()
-        
         # Set up SLSQP options with tight tolerances
         options = {
             'maxiter': maxiter,
@@ -225,7 +221,7 @@ class SLSQPOptimizer:
         ]
         
         # Add bounds [0,1] for all variables
-        bounds = [(0.0, 1.0) for _ in range(N * n)]
+        bounds = [(0.0, 1.0) for _ in range(len(x0))]
         
         # Initialize last valid iterate tracking
         self.prev_x = None
@@ -319,6 +315,18 @@ class SLSQPOptimizer:
             self.log['optimization_energy_changes'].append(energy_change)
         else:
             self.log['optimization_energy_changes'].append(0.0)
+        # --- Hybrid refinement trigger logic ---
+        patience = self.refine_patience
+        delta_energy = self.refine_delta_energy
+        grad_tol = self.refine_grad_tol
+        constraint_tol = self.refine_constraint_tol
+        if len(self.log['energies']) >= patience:
+            energy_change = abs(self.log['energies'][-1] - self.log['energies'][-patience])
+            grad_recent = min(self.log['gradient_norms'][-patience:])
+            constraint_recent = min(self.log['constraint_violations'][-patience:])
+            if (energy_change < delta_energy and grad_recent < grad_tol and constraint_recent < constraint_tol):
+                self.logger.info(f"Refinement triggered at iteration {iter_num} by convergence criteria.")
+                raise RefinementTriggered()
         # Detailed progress every 50 iterations
         if iter_num % 50 == 0:
             self.logger.debug(f"  Iteration {iter_num}:")

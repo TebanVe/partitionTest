@@ -25,7 +25,7 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.mesh import TorusMesh
-from src.slsqp_optimizer import SLSQPOptimizer
+from src.slsqp_optimizer import SLSQPOptimizer, RefinementTriggered
 from src.config import Config
 
 def setup_logging(logfile_path):
@@ -90,6 +90,14 @@ def plot_refinement_optimization_metrics(
     plt.savefig(save_path)
     plt.close()
 
+def should_refine(energies, grad_norms, constraints, patience=30, delta_energy=1e-4, grad_tol=1e-2, constraint_tol=1e-2):
+    if len(energies) < patience:
+        return False
+    energy_change = abs(energies[-1] - energies[-patience])
+    grad_recent = min(grad_norms[-patience:])
+    constraint_recent = min(constraints[-patience:])
+    return (energy_change < delta_energy and grad_recent < grad_tol and constraint_recent < constraint_tol)
+
 def optimize_partition(config, use_analytic=False, refinement_levels=1, solution_dir=None):
     """
     Optimize partition on a torus mesh using SLSQP.
@@ -150,17 +158,37 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
             n_partitions=config.n_partitions,
             epsilon=epsilon,
             lambda_penalty=config.lambda_penalty,
-            starget=config.starget
+            starget=config.starget,
+            refine_patience=int(getattr(config, 'refine_patience', 30)),
+            refine_delta_energy=float(getattr(config, 'refine_delta_energy', 1e-4)),
+            refine_grad_tol=float(getattr(config, 'refine_grad_tol', 1e-2)),
+            refine_constraint_tol=float(getattr(config, 'refine_constraint_tol', 1e-2))
         )
         optimizer.refinement_level = level
         N = len(v)
         if level == 0:
             np.random.seed(config.seed)
             x0 = np.random.rand(N * config.n_partitions)
+            # Project/normalize x0 here
+            x0_reshaped = x0.reshape(N, config.n_partitions)
+            x0_reshaped = np.clip(x0_reshaped, 0, 1)
+            row_sums = np.sum(x0_reshaped, axis=1, keepdims=True)
+            x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-10)
+            target_area = np.sum(v) / config.n_partitions
+            current_areas = v @ x0_reshaped
+            area_scales = target_area / np.maximum(current_areas, target_area/10)
+            for i in range(config.n_partitions):
+                x0_reshaped[:, i] *= area_scales[i]
+            x0 = x0_reshaped.flatten()
         else:
             x0 = interpolate_solution(results[-1]['x_opt'], results[-1]['mesh'], mesh)
         start_time = time.time()
-        x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
+        try:
+            x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
+        except RefinementTriggered:
+            logger.info(f"Refinement triggered early at level {level+1} by convergence criteria.")
+            x_opt = optimizer.log['x_history'][-1]
+            success = False
         opt_time = time.time() - start_time
         results.append({
             'level': level,
@@ -184,6 +212,7 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
         logger.info(f"  Energy: {results[-1]['energy']:.6e}")
         logger.info(f"  Time: {opt_time:.2f}s")
         logger.info(f"  Success: {success}\n")
+        # Always refine mesh for next level if refinement_levels > 1
         if level < refinement_levels - 1:
             config.n_theta += config.n_theta_increment
             config.n_phi += config.n_phi_increment

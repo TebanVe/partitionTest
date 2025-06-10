@@ -1,15 +1,20 @@
 # Example input.yaml for partition optimization
-n_partitions: 3
-n_theta: 8
-n_phi: 4
+n_partitions: 2
+n_theta: 12
+n_phi: 8
 R: 1.0
 r: 0.6
 lambda_penalty: 0.01
-max_iter: 15000
+max_iter: 3000
 tol: 1e-6
-refinement_levels: 1
-n_theta_increment: 1
+refinement_levels: 3
+n_theta_increment: 2
 n_phi_increment: 1
 use_analytic: true
 starget: null
-seed: 42 
+seed: 1941279
+# Mesh refinement convergence criteria
+refine_patience: 30
+refine_delta_energy: 1e-4
+refine_grad_tol: 1e-2
+refine_constraint_tol: 1e-2 
