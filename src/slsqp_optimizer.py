@@ -72,7 +72,8 @@ class SLSQPOptimizer:
             'step_sizes': [],
             'optimization_energy_changes': [],
             'x_history': [],
-                    }
+            'area_evolution': []  # Initialize area_evolution list
+        }
         
     def compute_energy(self, x: np.ndarray) -> float:
         """Compute the total energy of the system."""
@@ -201,7 +202,8 @@ class SLSQPOptimizer:
             'warnings': [],
             'step_sizes': [],
             'optimization_energy_changes': [],
-            'x_history': []
+            'x_history': [],
+            'area_evolution': []  # Initialize area_evolution list
         }
         
         # Store initial point
@@ -368,52 +370,9 @@ class SLSQPOptimizer:
                 self.logger.debug(f"    Constraint violation reduction: {self.log['constraint_violations'][0] - violations:.6e}")
                 self.logger.debug("  =================================\n")
 
-    def plot_optimization_metrics(self, save_path='optimization_metrics.png'):
-        """Plot optimization metrics including energy, gradient norm, constraint violations, and step size."""
-        if not self.log['energies']:
-            print("No optimization steps were logged!")
-            return
-            
-        # Create figure with 2x2 subplots
-        fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-        
-        # Plot 1: Energy vs Iterations
-        axs[0, 0].plot(self.log['iterations'], self.log['energies'], 'b-', label='Energy')
-        axs[0, 0].set_xlabel('Iteration')
-        axs[0, 0].set_ylabel('Energy')
-        axs[0, 0].set_title('Energy Convergence')
-        axs[0, 0].grid(True)
-        axs[0, 0].legend()
-        
-        # Plot 2: Gradient Norm vs Iterations
-        axs[0, 1].plot(self.log['iterations'], self.log['gradient_norms'], 'r-', label='Gradient Norm')
-        axs[0, 1].set_xlabel('Iteration')
-        axs[0, 1].set_ylabel('Gradient Norm')
-        axs[0, 1].set_title('Gradient Norm Convergence')
-        axs[0, 1].grid(True)
-        axs[0, 1].legend()
-        
-        # Plot 3: Constraint Violations vs Iterations
-        axs[1, 0].plot(self.log['iterations'], self.log['constraint_violations'], 'g-', label='Overall Constraint Violation')
-        axs[1, 0].set_xlabel('Iteration')
-        axs[1, 0].set_ylabel('Constraint Violation')
-        axs[1, 0].set_title('Constraint Violation Convergence')
-        axs[1, 0].grid(True)
-        axs[1, 0].legend()
-        
-        # Plot 4: Step Size vs Iterations
-        axs[1, 1].plot(self.log['iterations'], self.log['step_sizes'], 'm-', label='Step Size')
-        axs[1, 1].set_xlabel('Iteration')
-        axs[1, 1].set_ylabel('Step Size')
-        axs[1, 1].set_title('Step Size Evolution')
-        axs[1, 1].grid(True)
-        axs[1, 1].legend()
-        
-        # Adjust layout and save
-        plt.tight_layout()
-        plt.savefig(save_path)
-        plt.close()
-    
+        # Store area values for each partition
+        self.log['area_evolution'].append(area_sums.copy())
+
     def print_optimization_log(self):
         """Print a summary of the optimization log."""
         self.logger.info("Optimization Log Summary:")

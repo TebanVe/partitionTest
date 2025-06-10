@@ -98,6 +98,42 @@ def should_refine(energies, grad_norms, constraints, patience=30, delta_energy=1
     constraint_recent = min(constraints[-patience:])
     return (energy_change < delta_energy and grad_recent < grad_tol and constraint_recent < constraint_tol)
 
+def plot_area_evolution(area_evolution, level_boundaries, save_path='area_evolution.png',
+                       n_partitions=None, n_theta_info=None, n_phi_info=None, lambda_penalty=None, seed=None, use_analytic=None):
+    """Plot the evolution of areas for each partition."""
+    plt.figure(figsize=(12, 6))
+    
+    # Convert area_evolution to numpy array for easier handling
+    area_evolution = np.array(area_evolution)
+    n_partitions = area_evolution.shape[1]
+    
+    # Plot target area
+    target_area = np.mean(area_evolution[0])  # Use first iteration as reference
+    plt.axhline(y=target_area, color='k', linestyle='-', label='Target Area')
+    
+    # Plot each partition's area
+    for i in range(n_partitions):
+        plt.plot(area_evolution[:, i], linestyle='--', label=f'Partition {i+1}')
+    
+    # Add vertical lines for refinement boundaries
+    for boundary in level_boundaries[:-1]:  # skip last, which is end
+        plt.axvline(boundary, color='k', linestyle='--', alpha=0.5)
+    
+    plt.xlabel('Iteration')
+    plt.ylabel('Area')
+    plt.title('Evolution of Partition Areas')
+    plt.grid(True)
+    plt.legend()
+    
+    # Add a meaningful title at the top
+    if n_partitions is not None and n_theta_info is not None and n_phi_info is not None and lambda_penalty is not None and seed is not None:
+        analytic_str = f", analytic_gradients={'yes' if use_analytic else 'no'}" if use_analytic is not None else ""
+        plt.suptitle(f"Area Evolution: n_partitions={n_partitions}, n_theta={n_theta_info}, n_phi={n_phi_info}, lambda={lambda_penalty}, seed={seed}{analytic_str}", fontsize=12)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(save_path)
+    plt.close()
+
 def optimize_partition(config, use_analytic=False, refinement_levels=1, solution_dir=None):
     """
     Optimize partition on a torus mesh using SLSQP.
@@ -206,7 +242,8 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
             'iterations': optimizer.log['iterations'][-1],
             'time': opt_time,
             'success': success,
-            'mesh': mesh
+            'mesh': mesh,
+            'optimizer': optimizer
         })
         all_energies.extend(optimizer.log['energies'])
         all_grad_norms.extend(optimizer.log['gradient_norms'])
@@ -277,7 +314,21 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
         save_path=plot_path,
         n_partitions=initial_n_partitions, n_theta_info=n_theta_info, n_phi_info=n_phi_info, lambda_penalty=config.lambda_penalty, seed=config.seed, use_analytic=config.use_analytic
     )
-    logger.info(f"Saved plot to {plot_path}")
+    logger.info(f"Saved optimization metrics plot to {plot_path}")
+    
+    # Add new area evolution plot
+    area_evolution = []
+    for result in results:
+        area_evolution.extend(result['optimizer'].log['area_evolution'])
+    
+    area_plot_path = os.path.join(outdir, 'area_evolution.png')
+    plot_area_evolution(
+        area_evolution, level_boundaries,
+        save_path=area_plot_path,
+        n_partitions=initial_n_partitions, n_theta_info=n_theta_info, n_phi_info=n_phi_info, lambda_penalty=config.lambda_penalty, seed=config.seed, use_analytic=use_analytic
+    )
+    logger.info(f"Saved area evolution plot to {area_plot_path}")
+    
     print(f"Partition optimization complete. See {logfile_path} for detailed logs.\n")
     return results
 
