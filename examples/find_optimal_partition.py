@@ -181,7 +181,13 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
                 x0_reshaped[:, i] *= area_scales[i]
             x0 = x0_reshaped.flatten()
         else:
-            x0 = interpolate_solution(results[-1]['x_opt'], results[-1]['mesh'], mesh)
+            if config.n_theta_increment == 0 and config.n_phi_increment == 0:
+                # Mesh is unchanged, just copy the solution
+                x0 = results[-1]['x_opt'].copy()
+            else:
+                # Mesh changed, interpolate
+                x0 = interpolate_solution(results[-1]['x_opt'], results[-1]['mesh'], mesh)
+            
         start_time = time.time()
         try:
             x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
