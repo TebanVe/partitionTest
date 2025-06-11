@@ -166,7 +166,7 @@ class SLSQPOptimizer:
         
         return np.vstack([row_sum_jac, area_jac])
     
-    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8, use_analytic=True, logger=None) -> tuple:
+    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8, eps: float = 1e-8, disp: bool = False, use_analytic=True, logger=None) -> tuple:
         """
         Optimize using SLSQP with optional analytic gradients.
         
@@ -212,9 +212,9 @@ class SLSQPOptimizer:
         # Set up SLSQP options with tight tolerances
         options = {
             'maxiter': maxiter,
-            'ftol': 1e-8,
-            'eps': 1e-8,  # Match finite-difference step size to gradient accuracy
-            'disp': False
+            'ftol': ftol,
+            'eps': eps,  # Match finite-difference step size to gradient accuracy
+            'disp': disp
         }
         
         # Define constraints with analytic Jacobian

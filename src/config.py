@@ -12,7 +12,11 @@ class Config:
         self.n_partitions = 3
         self.lambda_penalty = 1.0
         self.max_iter = 1000
+        # SLSQP parameters
         self.tol = 1e-6
+        self.slsqp_eps = 1e-8
+        self.slsqp_disp = False
+        # Optimization parameters
         self.starget = 1.0
         self.c = 0.5  # Armijo condition parameter
         self.rho = 0.5  # Step size reduction factor

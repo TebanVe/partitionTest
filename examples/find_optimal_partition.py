@@ -134,7 +134,7 @@ def plot_area_evolution(area_evolution, level_boundaries, save_path='area_evolut
     plt.savefig(save_path)
     plt.close()
 
-def optimize_partition(config, use_analytic=False, refinement_levels=1, solution_dir=None):
+def optimize_partition(config, solution_dir=None):
     """
     Optimize partition on a torus mesh using SLSQP.
     
@@ -148,6 +148,9 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
     initial_n_phi = config.n_phi
     initial_n_partitions = config.n_partitions
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    use_analytic = config.use_analytic
+    refinement_levels = config.refinement_levels
     # Build mesh info strings for naming
     if refinement_levels > 1:
         final_n_theta = initial_n_theta + (refinement_levels - 1) * config.n_theta_increment
@@ -226,7 +229,13 @@ def optimize_partition(config, use_analytic=False, refinement_levels=1, solution
             
         start_time = time.time()
         try:
-            x_opt, success = optimizer.optimize(x0, maxiter=config.max_iter, ftol=config.tol, use_analytic=use_analytic, logger=logger)
+            x_opt, success = optimizer.optimize(x0, 
+                                                maxiter=config.max_iter,
+                                                ftol=config.tol,
+                                                eps=config.slsqp_eps,
+                                                disp=config.slsqp_disp,
+                                                use_analytic=use_analytic, 
+                                                logger=logger)
         except RefinementTriggered:
             logger.info(f"Refinement triggered early at level {level+1} by convergence criteria.")
             x_opt = optimizer.log['x_history'][-1]
@@ -376,7 +385,5 @@ if __name__ == "__main__":
     # Run the test
     optimize_partition(
         config=config,
-        use_analytic=config.use_analytic,
-        refinement_levels=config.refinement_levels,
         solution_dir=args.solution_dir
     ) 
