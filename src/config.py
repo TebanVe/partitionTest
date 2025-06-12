@@ -32,6 +32,12 @@ class Config:
         self.refine_delta_energy = 1e-4
         self.refine_grad_tol = 1e-2
         self.refine_constraint_tol = 1e-2
+        # Initial condition parameters
+        self.use_custom_initial_condition = False  # Whether to use a custom initial condition
+        self.initial_condition_path = None  # Path to the .h5 file containing the initial condition
+        # Logging parameters
+        self.log_frequency = 50  # How often to log optimization progress
+        self.use_last_valid_iterate = True  # Whether to use last valid iterate on unsuccessful termination
         
         # Override with params if provided
         if params:
@@ -42,5 +48,5 @@ class Config:
                     setattr(self, k, v)
                     print(f"  {k}: {old_value} -> {v}")
                 else:
-                    print(f"  Warning: Unknown parameter '{k}' with value {v}") 
+                    print(f"  Warning: Unknown parameter '{k}' with value {v}")
             print("\n")

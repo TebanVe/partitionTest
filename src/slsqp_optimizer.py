@@ -166,7 +166,9 @@ class SLSQPOptimizer:
         
         return np.vstack([row_sum_jac, area_jac])
     
-    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8, eps: float = 1e-8, disp: bool = False, use_analytic=True, logger=None) -> tuple:
+    def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8, eps: float = 1e-8, 
+                disp: bool = False, use_analytic=True, logger=None, log_frequency: int = 50,
+                use_last_valid_iterate: bool = True) -> tuple:
         """
         Optimize using SLSQP with optional analytic gradients.
         
@@ -176,6 +178,8 @@ class SLSQPOptimizer:
             ftol: Function tolerance
             use_analytic: Whether to use analytic gradients
             logger: Logger for optimization progress
+            log_frequency: How often to log optimization progress
+            use_last_valid_iterate: Whether to use last valid iterate on unsuccessful termination
             
         Returns:
             Tuple of (optimized point, success flag)
@@ -193,6 +197,10 @@ class SLSQPOptimizer:
         self.logger = logger
         self.logger.info("Starting SLSQP optimization with " + ("analytic" if use_analytic else "finite-difference") + " gradients...")
         
+        # Store parameters for callback
+        self.log_frequency = log_frequency
+        self.use_last_valid_iterate = use_last_valid_iterate
+        
         # Initialize logging
         self.log = {
             'iterations': [],
@@ -208,6 +216,10 @@ class SLSQPOptimizer:
         
         # Store initial point
         self.log['x_history'].append(x0.copy())
+        
+        # Add debug logging for initial energy
+        initial_energy = self.compute_energy(x0)
+        self.logger.info(f"Initial energy before optimization: {initial_energy:.6e}")
         
         # Set up SLSQP options with tight tolerances
         options = {
@@ -234,7 +246,7 @@ class SLSQPOptimizer:
             self.compute_energy,
             x0,
             method='SLSQP',
-            jac=self.compute_gradient if use_analytic else None,  # Use analytic gradient if specified
+            jac=self.compute_gradient if use_analytic else None,
             bounds=bounds,
             constraints=constraints,
             options=options,
@@ -249,7 +261,7 @@ class SLSQPOptimizer:
         self.logger.info(f"Final constraint violation: {np.max(np.abs(self.constraint_fun(result.x))):.6e}")
         
         # If not successful (status != 0), use last valid iterate and trim logs
-        if hasattr(result, 'status') and result.status != 0 and self.prev_x is not None:
+        if hasattr(result, 'status') and result.status != 0 and self.prev_x is not None and self.use_last_valid_iterate:
             self.logger.warning("Returning last valid iterate before unsuccessful termination.\n")
             # Remove last entry from logs (corresponding to problematic final step)
             for key in ['iterations', 'energies', 'gradient_norms', 'constraint_violations', 'step_sizes', 'optimization_energy_changes', 'x_history']:
@@ -329,8 +341,8 @@ class SLSQPOptimizer:
             if (energy_change < delta_energy and grad_recent < grad_tol and constraint_recent < constraint_tol):
                 self.logger.info(f"Refinement triggered at iteration {iter_num} by convergence criteria.")
                 raise RefinementTriggered()
-        # Detailed progress every 50 iterations
-        if iter_num % 50 == 0:
+        # Detailed progress every log_frequency iterations
+        if iter_num % self.log_frequency == 0:
             self.logger.debug(f"  Iteration {iter_num}:")
             self.logger.debug(f"  Energy: {energy:.6e}")
             self.logger.debug(f"  Gradient norm: {grad_norm:.6e}")

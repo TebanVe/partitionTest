@@ -134,14 +134,86 @@ def plot_area_evolution(area_evolution, level_boundaries, save_path='area_evolut
     plt.savefig(save_path)
     plt.close()
 
+def load_initial_condition(h5_path: str, mesh: TorusMesh, n_partitions: int, logger=None) -> np.ndarray:
+    """
+    Load and validate initial condition from an HDF5 file.
+    
+    Args:
+        h5_path: Path to the HDF5 file containing the solution
+        mesh: Current mesh object
+        n_partitions: Number of partitions
+        logger: Optional logger for output
+        
+    Returns:
+        Initial condition vector x0
+    """
+    if logger:
+        logger.info(f"Loading initial condition from {h5_path}")
+    
+    with h5py.File(h5_path, 'r') as f:
+        # Load the solution
+        x_opt = f['x_opt'][:]
+        old_vertices = f['vertices'][:]
+        
+        # Validate dimensions
+        N_old = len(old_vertices)
+        N_new = len(mesh.vertices)
+        
+        if x_opt.shape[0] != N_old * n_partitions:
+            raise ValueError(f"Solution in {h5_path} has incompatible dimensions. "
+                           f"Expected {N_old * n_partitions} elements, got {x_opt.shape[0]}")
+        
+        if logger:
+            logger.info(f"Loaded solution with {N_old} vertices and {n_partitions} partitions")
+        
+        # If meshes are identical, return solution directly
+        if N_old == N_new and np.allclose(old_vertices, mesh.vertices):
+            if logger:
+                logger.info("Meshes are identical, using solution directly")
+            return x_opt
+        
+        # Otherwise, interpolate the solution to the new mesh
+        if logger:
+            logger.info(f"Interpolating solution from {N_old} to {N_new} vertices")
+        return interpolate_solution(x_opt, old_vertices, mesh.vertices, n_partitions)
+
+def initialize_random_solution(N: int, n_partitions: int, v: np.ndarray, seed: int) -> np.ndarray:
+    """
+    Initialize a random solution with proper normalization and area constraints.
+    
+    Args:
+        N: Number of vertices in the mesh
+        n_partitions: Number of partitions
+        v: Vector of mass matrix column sums
+        seed: Random seed for reproducibility
+        
+    Returns:
+        Initialized solution vector x0
+    """
+    np.random.seed(seed)
+    x0 = np.random.rand(N * n_partitions)
+    
+    # Project/normalize x0
+    x0_reshaped = x0.reshape(N, n_partitions)
+    x0_reshaped = np.clip(x0_reshaped, 0, 1)
+    row_sums = np.sum(x0_reshaped, axis=1, keepdims=True)
+    x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-10)
+    
+    # Scale to satisfy area constraints
+    target_area = np.sum(v) / n_partitions
+    current_areas = v @ x0_reshaped
+    area_scales = target_area / np.maximum(current_areas, target_area/10)
+    for i in range(n_partitions):
+        x0_reshaped[:, i] *= area_scales[i]
+    
+    return x0_reshaped.flatten()
+
 def optimize_partition(config, solution_dir=None):
     """
     Optimize partition on a torus mesh using SLSQP.
     
     Args:
         config: Configuration object containing mesh and optimization parameters
-        use_analytic: Whether to use analytic gradients
-        refinement_levels: Number of mesh refinement levels (1 means no refinement)
         solution_dir: Optional directory to save solution files (for cluster execution)
     """
     initial_n_theta = config.n_theta
@@ -203,22 +275,26 @@ def optimize_partition(config, solution_dir=None):
             refine_grad_tol=float(getattr(config, 'refine_grad_tol', 1e-2)),
             refine_constraint_tol=float(getattr(config, 'refine_constraint_tol', 1e-2))
         )
-        optimizer.refinement_level = level
+       
         N = len(v)
         if level == 0:
-            np.random.seed(config.seed)
-            x0 = np.random.rand(N * config.n_partitions)
-            # Project/normalize x0 here
-            x0_reshaped = x0.reshape(N, config.n_partitions)
-            x0_reshaped = np.clip(x0_reshaped, 0, 1)
-            row_sums = np.sum(x0_reshaped, axis=1, keepdims=True)
-            x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-10)
-            target_area = np.sum(v) / config.n_partitions
-            current_areas = v @ x0_reshaped
-            area_scales = target_area / np.maximum(current_areas, target_area/10)
-            for i in range(config.n_partitions):
-                x0_reshaped[:, i] *= area_scales[i]
-            x0 = x0_reshaped.flatten()
+
+            print()
+            print(f"config.use_custom_initial_condition: {config.use_custom_initial_condition}")
+            print(f"config.initial_condition_path: {config.initial_condition_path}")
+            print()
+            # Load initial condition if provided
+            if config.use_custom_initial_condition and config.initial_condition_path:
+                try:
+                    x0 = load_initial_condition(config.initial_condition_path, mesh, config.n_partitions, logger)
+                    logger.info("Successfully loaded initial condition")
+                except Exception as e:
+                    logger.error(f"Failed to load initial condition: {e}")
+                    logger.info("Falling back to random initialization")
+                    x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
+            else:
+                # Random initialization
+                x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
         else:
             if config.n_theta_increment == 0 and config.n_phi_increment == 0:
                 # Mesh is unchanged, just copy the solution
@@ -226,7 +302,7 @@ def optimize_partition(config, solution_dir=None):
             else:
                 # Mesh changed, interpolate
                 x0 = interpolate_solution(results[-1]['x_opt'], results[-1]['mesh'], mesh)
-            
+        
         start_time = time.time()
         try:
             x_opt, success = optimizer.optimize(x0, 
@@ -235,7 +311,9 @@ def optimize_partition(config, solution_dir=None):
                                                 eps=config.slsqp_eps,
                                                 disp=config.slsqp_disp,
                                                 use_analytic=use_analytic, 
-                                                logger=logger)
+                                                logger=logger,
+                                                log_frequency=config.log_frequency,
+                                                use_last_valid_iterate=config.use_last_valid_iterate)
         except RefinementTriggered:
             logger.info(f"Refinement triggered early at level {level+1} by convergence criteria.")
             x_opt = optimizer.log['x_history'][-1]
@@ -300,7 +378,9 @@ def optimize_partition(config, solution_dir=None):
             'n_phi_increment': config.n_phi_increment,
             'use_analytic': use_analytic,
             'seed': config.seed,
-            'lambda_penalty': config.lambda_penalty
+            'lambda_penalty': config.lambda_penalty,
+            'use_custom_initial_condition': config.use_custom_initial_condition,
+            'initial_condition_path': config.initial_condition_path
         },
         'final_mesh_stats': final_result['mesh_stats'],
         'final_epsilon': float(final_result['epsilon']),
@@ -367,12 +447,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test SLSQP optimizer for manifold partition optimization')
     parser.add_argument('--input', type=str, required=True, help='Path to input YAML file with parameters')
     parser.add_argument('--solution-dir', type=str, help='Directory for storing solution files (if not provided, uses local results directory)')
+    parser.add_argument('--initial-condition', type=str, help='Path to .h5 file containing initial condition')
     args = parser.parse_args()
 
     # Load parameters from YAML
     print(f"\nLoading parameters from {args.input}")
     with open(args.input, 'r') as f:
         params = yaml.safe_load(f)
+    
+    # Override initial condition path if provided via command line
+    if args.initial_condition:
+        params['use_custom_initial_condition'] = True
+        params['initial_condition_path'] = args.initial_condition
     
     # Create config and check for overridden parameters
     config = Config(params)
