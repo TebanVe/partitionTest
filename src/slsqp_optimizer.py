@@ -166,9 +166,24 @@ class SLSQPOptimizer:
         
         return np.vstack([row_sum_jac, area_jac])
     
+    def compute_area_evolution(self, x):
+        """
+        Compute the area of each partition at the current point.
+        
+        Args:
+            x: Current point in optimization
+            
+        Returns:
+            Array of areas for each partition
+        """
+        N = len(self.v)
+        n_partitions = self.n_partitions
+        x_reshaped = x.reshape(N, n_partitions)
+        return self.v @ x_reshaped
+
     def optimize(self, x0: np.ndarray, maxiter: int = 100, ftol: float = 1e-8, eps: float = 1e-8, 
                 disp: bool = False, use_analytic=True, logger=None, log_frequency: int = 50,
-                use_last_valid_iterate: bool = True) -> tuple:
+                use_last_valid_iterate: bool = True, is_mesh_refinement: bool = False) -> tuple:
         """
         Optimize using SLSQP with optional analytic gradients.
         
@@ -180,6 +195,7 @@ class SLSQPOptimizer:
             logger: Logger for optimization progress
             log_frequency: How often to log optimization progress
             use_last_valid_iterate: Whether to use last valid iterate on unsuccessful termination
+            is_mesh_refinement: True if this is a mesh refinement step (new mesh resolution)
             
         Returns:
             Tuple of (optimized point, success flag)
@@ -201,25 +217,38 @@ class SLSQPOptimizer:
         self.log_frequency = log_frequency
         self.use_last_valid_iterate = use_last_valid_iterate
         
-        # Initialize logging
-        self.log = {
-            'iterations': [],
-            'energies': [],
-            'gradient_norms': [],
-            'constraint_violations': [],
-            'warnings': [],
-            'step_sizes': [],
-            'optimization_energy_changes': [],
-            'x_history': [],
-            'area_evolution': []  # Initialize area_evolution list
-        }
-        
-        # Store initial point
-        self.log['x_history'].append(x0.copy())
-        
-        # Add debug logging for initial energy
-        initial_energy = self.compute_energy(x0)
-        self.logger.info(f"Initial energy before optimization: {initial_energy:.6e}")
+        if not is_mesh_refinement:
+            # Initialize logging with initial point
+            self.log = {
+                'iterations': [0],  # Start with iteration 0
+                'energies': [self.compute_energy(x0)],  # Initial energy
+                'gradient_norms': [np.linalg.norm(self.compute_gradient(x0))],  # Initial gradient
+                'constraint_violations': [np.max(np.abs(self.constraint_fun(x0)))],  # Initial violations
+                'warnings': [],
+                'step_sizes': [0.0],  # Initial step size is 0
+                'optimization_energy_changes': [0.0],  # No change at start
+                'x_history': [x0.copy()],  # Initial point
+                'area_evolution': [self.compute_area_evolution(x0)]  # Initial areas
+            }
+            
+            # Log initial state
+            self.logger.info(f"Initial state before optimization:")
+            self.logger.info(f"  Energy: {self.log['energies'][0]:.6e}")
+            self.logger.info(f"  Gradient norm: {self.log['gradient_norms'][0]:.6e}")
+            self.logger.info(f"  Constraint violation: {self.log['constraint_violations'][0]:.6e}")
+        else:
+            # For continuation, just initialize empty logs
+            self.log = {
+                'iterations': [],
+                'energies': [],
+                'gradient_norms': [],
+                'constraint_violations': [],
+                'warnings': [],
+                'step_sizes': [],
+                'optimization_energy_changes': [],
+                'x_history': [],
+                'area_evolution': []
+            }
         
         # Set up SLSQP options with tight tolerances
         options = {
@@ -274,7 +303,7 @@ class SLSQPOptimizer:
             if self.log['x_history']:
                 step_size = np.linalg.norm(self.prev_x - self.log['x_history'][-1])
             else:
-                step_size = 0.0
+                step_size = 0.0 # Check this!!!
             self.log['energies'].append(energy)
             self.log['gradient_norms'].append(grad_norm)
             self.log['constraint_violations'].append(violations)

@@ -10,6 +10,8 @@ INPUT_FILE="parameters/input.yaml"
 OUTPUT_DIR="results"
 SOLUTION_DIR="${PROJECT_BASE}/private/LINKED_LST_MANIFOLD/PART_SOLUTION"  # Directory for optimization solutions
 TIME_LIMIT="12:00:00"  # Default time limit
+INITIAL_CONDITION=""  # Default empty initial condition
+VENV_NAME="partition"  # Default virtual environment name
 
 # Parse command line arguments (only those that can be passed to Python or are needed for SLURM/logs)
 while [[ $# -gt 0 ]]; do
@@ -28,6 +30,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --time)
             TIME_LIMIT="$2"
+            shift 2
+            ;;
+        --initial-condition)
+            INITIAL_CONDITION="$2"
+            shift 2
+            ;;
+        --venv)
+            VENV_NAME="$2"
             shift 2
             ;;
         *)
@@ -91,13 +101,24 @@ cat > "$SLURM_SCRIPT" << EOF
 # Load required modules
 module load python/3.9.5
 
+# Check if virtual environment exists and activate it
+if [ -d "\$HOME/$VENV_NAME" ]; then
+    echo "Activating virtual environment: $VENV_NAME"
+    source "\$HOME/$VENV_NAME/bin/activate"
+else
+    echo "Error: Virtual environment '$VENV_NAME' not found in \$HOME"
+    echo "Please create it first using: python -m venv \$HOME/$VENV_NAME"
+    exit 1
+fi
+
 # Set up environment
 export PYTHONPATH="\${PYTHONPATH}:\$(pwd)"
 
 # Run the Python script
 python examples/find_optimal_partition.py \
     --input "${INPUT_FILE}" \
-    --solution-dir "${SOLUTION_DIR}"
+    --solution-dir "${SOLUTION_DIR}" \
+    --initial-condition "${INITIAL_CONDITION}"
 EOF
 
 # Submit the job

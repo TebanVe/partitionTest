@@ -70,6 +70,9 @@ For local development and testing, you can run the scripts directly. There are t
    use_analytic: true
    starget: null
    seed: 42
+   # Logging parameters
+   log_frequency: 50  # How often to log optimization progress
+   use_last_valid_iterate: true  # Whether to use last valid iterate on unsuccessful termination
    # Mesh refinement convergence criteria (used for logging and advanced control)
    refine_patience: 30
    refine_delta_energy: 1e-4
@@ -78,9 +81,37 @@ For local development and testing, you can run the scripts directly. There are t
    ```
 
    **Note:**
-   - Mesh refinement is now always performed at each level if `refinement_levels > 1`, regardless of convergence criteria, ensuring the mesh is updated as expected.
-   - Projection/normalization of the initial guess is only performed for the first random initialization; subsequent levels use the previous solution as-is, preventing unnecessary metric jumps.
-   - The mesh refinement criteria parameters are included for completeness and advanced control, but by default, mesh refinement will occur at each level.
+   - Mesh refinement is performed at each level if `refinement_levels > 1`, with mesh resolution changes controlled by `n_theta_increment` and `n_phi_increment`.
+   - Initial state logging is only performed for:
+     - First level with random initialization
+     - Levels where mesh resolution changes
+   - The `use_last_valid_iterate` parameter controls whether to use the last valid point if optimization fails.
+   - The mesh refinement criteria parameters (`refine_patience`, `refine_delta_energy`, etc.) are used for logging and advanced control.
+
+   ### Using External Solution as Initial Condition
+
+   You can start the optimization from a previously computed solution by:
+
+   1. Setting the following parameters in your YAML file:
+   ```yaml
+   # Initial condition parameters
+   use_custom_initial_condition: true  # Enable loading from external file
+   initial_condition_path: "path/to/your/solution.h5"  # Path to the solution file
+   ```
+
+   2. Or using the command line argument:
+   ```bash
+   python examples/find_optimal_partition.py --input parameters/input.yaml --initial-condition path/to/your/solution.h5
+   ```
+
+   The solution file should be an HDF5 file (.h5) containing:
+   - `x_opt`: The solution vector
+   - `vertices`: The mesh vertices used to compute the solution
+
+   **Note:**
+   - If the mesh resolution differs from the loaded solution, the solution will be interpolated to the new mesh
+   - The initial state logging will be skipped when using a custom initial condition
+   - The solution file should be compatible with the current number of partitions
 
    Additional runtime options:
    - `--solution-dir`: Directory for storing solution files (optional)
@@ -88,25 +119,47 @@ For local development and testing, you can run the scripts directly. There are t
 #### Cluster Execution (UPPMAX)
 Python version and necessary modules will be loaded with the submission script.
 
+### Cluster Environment Setup
+
+Before submitting jobs on UPPMAX, you need to set up your Python environment:
+
+1. Create a virtual environment:
+```bash
+# Load Python module
+module load python/3.9.5
+
+# Create virtual environment in your home directory
+python -m venv ~/partition
+
+# Activate the environment
+source ~/partition/bin/activate
+
+# Install required packages
+pip install -r requirements.txt
+```
+
+2. The submission script will automatically activate this environment, but you can specify a different one:
+```bash
+./scripts/submit.sh \
+    --input parameters/input.yaml \
+    --venv my_environment  # Optional: specify different environment
+```
+
+**Note:** The virtual environment is required for visualization tools that use PyVista. If you don't need visualization, you can run without a virtual environment.
+
 For running on the UPPMAX cluster, use the provided SLURM submission script. The script supports both default parameters and custom input files:
 
 ```bash
 # Basic run with default parameters from config.py
 ./scripts/submit.sh
 
-# Run with custom parameters file (useful for running multiple simulations)
-./scripts/submit.sh \
-    --input parameters/input.yaml \
-    --output results \
-    --solution-dir /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION \
-    --time "12:00:00"
-```
-
 The submission script provides the following options:
 - `--input`: Path to input YAML file (default: parameters/input.yaml)
 - `--output`: Directory for output files (default: results)
 - `--solution-dir`: Directory for solution files (default: /proj/snic2020-15-36/private/LINKED_LST_MANIFOLD/PART_SOLUTION)
 - `--time`: Time limit for the job (default: 12:00:00)
+- `--initial-condition`: Path to HDF5 file containing initial condition (optional)
+- `--venv`: Name of virtual environment to activate (default: partition)
 
 **Note:** All mesh and optimization parameters (including mesh increments) are set in the YAML file. You do not pass mesh increments as command-line arguments.
 
@@ -145,6 +198,18 @@ Features:
 - Automatic plotting of optimization metrics
 - Support for both local and cluster execution
 - Easy switching between gradient computation methods
+
+#### Logging and Progress Tracking
+The SLSQP optimizer includes detailed logging features:
+- Configurable logging frequency (`log_frequency`)
+- Option to use last valid iterate on unsuccessful termination (`use_last_valid_iterate`)
+- Initial state logging for new meshes and random initialization
+- Detailed progress tracking including:
+  - Energy values
+  - Gradient norms
+  - Constraint violations
+  - Step sizes
+  - Area evolution for each partition
 
 Example usage:
 ```bash

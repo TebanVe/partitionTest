@@ -275,15 +275,9 @@ def optimize_partition(config, solution_dir=None):
             refine_grad_tol=float(getattr(config, 'refine_grad_tol', 1e-2)),
             refine_constraint_tol=float(getattr(config, 'refine_constraint_tol', 1e-2))
         )
-       
+        
         N = len(v)
         if level == 0:
-
-            print()
-            print(f"config.use_custom_initial_condition: {config.use_custom_initial_condition}")
-            print(f"config.initial_condition_path: {config.initial_condition_path}")
-            print()
-            # Load initial condition if provided
             if config.use_custom_initial_condition and config.initial_condition_path:
                 try:
                     x0 = load_initial_condition(config.initial_condition_path, mesh, config.n_partitions, logger)
@@ -293,7 +287,7 @@ def optimize_partition(config, solution_dir=None):
                     logger.info("Falling back to random initialization")
                     x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
             else:
-                # Random initialization
+                # Original random initialization code
                 x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
         else:
             if config.n_theta_increment == 0 and config.n_phi_increment == 0:
@@ -302,6 +296,20 @@ def optimize_partition(config, solution_dir=None):
             else:
                 # Mesh changed, interpolate
                 x0 = interpolate_solution(results[-1]['x_opt'], results[-1]['mesh'], mesh)
+        
+        # Determine if this is a mesh refinement step
+        is_mesh_refinement = (
+            #(level == 0 and not config.use_custom_initial_condition) or  # Only log initial state for random initialization at level 0
+            (level > 0 and (config.n_theta_increment > 0 or config.n_phi_increment > 0))  # Log initial state for mesh resolution changes
+        )
+        
+        # Add debug logging
+        logger.debug(f"Debug is_mesh_refinement calculation:")
+        logger.debug(f"  level = {level}")
+        logger.debug(f"  use_custom_initial_condition = {config.use_custom_initial_condition}")
+        logger.debug(f"  n_theta_increment = {config.n_theta_increment}")
+        logger.debug(f"  n_phi_increment = {config.n_phi_increment}")
+        logger.debug(f"  is_mesh_refinement = {is_mesh_refinement}")
         
         start_time = time.time()
         try:
@@ -313,7 +321,8 @@ def optimize_partition(config, solution_dir=None):
                                                 use_analytic=use_analytic, 
                                                 logger=logger,
                                                 log_frequency=config.log_frequency,
-                                                use_last_valid_iterate=config.use_last_valid_iterate)
+                                                use_last_valid_iterate=config.use_last_valid_iterate,
+                                                is_mesh_refinement=is_mesh_refinement)
         except RefinementTriggered:
             logger.info(f"Refinement triggered early at level {level+1} by convergence criteria.")
             x_opt = optimizer.log['x_history'][-1]
