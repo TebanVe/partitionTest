@@ -78,6 +78,10 @@ For local development and testing, you can run the scripts directly. There are t
    refine_delta_energy: 1e-4
    refine_grad_tol: 1e-2
    refine_constraint_tol: 1e-2
+   # Initial condition parameters
+   use_custom_initial_condition: false  # Set to true to use a custom initial condition
+   initial_condition_path: null  # Path to the .h5 file containing the initial condition
+   allow_random_fallback: true  # Whether to allow random initialization as fallback when loading fails
    ```
 
    **Note:**
@@ -87,6 +91,7 @@ For local development and testing, you can run the scripts directly. There are t
      - Levels where mesh resolution changes
    - The `use_last_valid_iterate` parameter controls whether to use the last valid point if optimization fails.
    - The mesh refinement criteria parameters (`refine_patience`, `refine_delta_energy`, etc.) are used for logging and advanced control.
+   - The `allow_random_fallback` parameter controls whether to fall back to random initialization when loading or interpolating a custom initial condition fails. If set to `false`, the program will raise an error instead.
 
    ### Using External Solution as Initial Condition
 
@@ -97,6 +102,7 @@ For local development and testing, you can run the scripts directly. There are t
    # Initial condition parameters
    use_custom_initial_condition: true  # Enable loading from external file
    initial_condition_path: "path/to/your/solution.h5"  # Path to the solution file
+   allow_random_fallback: false  # Optional: disable random fallback to ensure interpolation is used
    ```
 
    2. Or using the command line argument:
@@ -112,6 +118,7 @@ For local development and testing, you can run the scripts directly. There are t
    - If the mesh resolution differs from the loaded solution, the solution will be interpolated to the new mesh
    - The initial state logging will be skipped when using a custom initial condition
    - The solution file should be compatible with the current number of partitions
+   - If `allow_random_fallback` is set to `false`, the program will raise an error if loading or interpolating the solution fails, instead of falling back to random initialization
 
    Additional runtime options:
    - `--solution-dir`: Directory for storing solution files (optional)

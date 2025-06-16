@@ -159,10 +159,6 @@ def load_initial_condition(h5_path: str, mesh: TorusMesh, n_partitions: int, log
         N_old = len(old_vertices)
         N_new = len(mesh.vertices)
         
-        if x_opt.shape[0] != N_old * n_partitions:
-            raise ValueError(f"Solution in {h5_path} has incompatible dimensions. "
-                           f"Expected {N_old * n_partitions} elements, got {x_opt.shape[0]}")
-        
         if logger:
             logger.info(f"Loaded solution with {N_old} vertices and {n_partitions} partitions")
         
@@ -172,10 +168,18 @@ def load_initial_condition(h5_path: str, mesh: TorusMesh, n_partitions: int, log
                 logger.info("Meshes are identical, using solution directly")
             return x_opt
         
-        # Otherwise, interpolate the solution to the new mesh
-        if logger:
-            logger.info(f"Interpolating solution from {N_old} to {N_new} vertices")
-        return interpolate_solution(x_opt, old_vertices, mesh.vertices, n_partitions)
+        # If dimensions don't match but we have a valid solution, interpolate
+        if x_opt.shape[0] == N_old * n_partitions:
+            if logger:
+                logger.info(f"Interpolating solution from {N_old} to {N_new} vertices")
+            # Create a temporary mesh object for the old vertices
+            old_mesh = TorusMesh(n_theta=mesh.n_theta, n_phi=mesh.n_phi, R=mesh.R, r=mesh.r)
+            old_mesh.vertices = old_vertices
+            return interpolate_solution(x_opt, old_mesh, mesh)
+        
+        # If we get here, the solution is invalid
+        raise ValueError(f"Solution in {h5_path} has incompatible dimensions. "
+                       f"Expected {N_old * n_partitions} elements, got {x_opt.shape[0]}")
 
 def initialize_random_solution(N: int, n_partitions: int, v: np.ndarray, seed: int) -> np.ndarray:
     """
@@ -281,11 +285,14 @@ def optimize_partition(config, solution_dir=None):
             if config.use_custom_initial_condition and config.initial_condition_path:
                 try:
                     x0 = load_initial_condition(config.initial_condition_path, mesh, config.n_partitions, logger)
-                    logger.info("Successfully loaded initial condition")
+                    logger.info("Successfully loaded and interpolated initial condition")
                 except Exception as e:
-                    logger.error(f"Failed to load initial condition: {e}")
-                    logger.info("Falling back to random initialization")
-                    x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
+                    logger.error(f"Failed to load/interpolate initial condition: {e}")
+                    if getattr(config, 'allow_random_fallback', True):
+                        logger.info("Falling back to random initialization")
+                        x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
+                    else:
+                        raise RuntimeError("Failed to load initial condition and random fallback is disabled")
             else:
                 # Original random initialization code
                 x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)

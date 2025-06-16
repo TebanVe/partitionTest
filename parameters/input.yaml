@@ -1,11 +1,11 @@
 # Example input.yaml for partition optimization
 n_partitions: 2
-n_theta: 12
-n_phi: 8
+n_theta: 14
+n_phi: 10
 R: 1.0
 r: 0.6
 lambda_penalty: 0.01
-max_iter: 15000
+max_iter: 5000
 # SLSQP parameters
 tol: 1e-6
 slsqp_eps: 1e-8
@@ -26,6 +26,7 @@ refine_constraint_tol: 1e-2
 # Initial condition parameters
 use_custom_initial_condition: false  # Set to true to use a custom initial condition
 initial_condition_path: null  # Path to the .h5 file containing the initial condition
+allow_random_fallback: true  # Whether to allow random initialization as fallback
 # Logging parameters
 log_frequency: 50  # How often to log optimization progress (in iterations)
 use_last_valid_iterate: true  # Whether to use last valid iterate on unsuccessful termination 
