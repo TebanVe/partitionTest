@@ -1,26 +1,26 @@
 # Example input.yaml for partition optimization
 n_partitions: 2
-n_theta: 14
+n_theta: 12
 n_phi: 10
 R: 1.0
 r: 0.6
 lambda_penalty: 0.01
-max_iter: 5000
+max_iter: 10000
 # SLSQP parameters
 tol: 1e-6
 slsqp_eps: 1e-8
 slsqp_disp: false
 # Mesh refinement parameters
 refinement_levels: 1
-n_theta_increment: 2
-n_phi_increment: 1
+n_theta_increment: 0
+n_phi_increment: 0
 # Optimization parameters
-use_analytic: true
+use_analytic: false
 starget: null
-seed: 1941279
+seed: 491
 # Mesh refinement convergence criteria
 refine_patience: 30
-refine_delta_energy: 1e-4
+refine_delta_energy: 1e-3
 refine_grad_tol: 1e-2
 refine_constraint_tol: 1e-2
 # Initial condition parameters

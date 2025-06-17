@@ -39,15 +39,22 @@ class Config:
         # Logging parameters
         self.log_frequency = 50  # How often to log optimization progress
         self.use_last_valid_iterate = True  # Whether to use last valid iterate on unsuccessful termination
-        
+    
         # Override with params if provided
         if params:
             print("\nOverriding default parameters with:")
             for k, v in params.items():
                 if hasattr(self, k):
                     old_value = getattr(self, k)
+                    # Ensure numeric parameters are properly typed
+                    default_value = getattr(self, k)
+                    if isinstance(default_value, float) and v is not None:
+                        v = float(v)
+                    elif isinstance(default_value, int) and v is not None:
+                        v = int(v)
                     setattr(self, k, v)
                     print(f"  {k}: {old_value} -> {v}")
                 else:
                     print(f"  Warning: Unknown parameter '{k}' with value {v}")
             print("\n")
+    
