@@ -27,6 +27,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.mesh import TorusMesh
 from src.slsqp_optimizer import SLSQPOptimizer, RefinementTriggered
 from src.config import Config
+from src.projection_iterative import orthogonal_projection_iterative
 
 def setup_logging(logfile_path):
     logger = logging.getLogger('partition_optimization')
@@ -181,15 +182,104 @@ def load_initial_condition(h5_path: str, mesh: TorusMesh, n_partitions: int, log
         raise ValueError(f"Solution in {h5_path} has incompatible dimensions. "
                        f"Expected {N_old * n_partitions} elements, got {x_opt.shape[0]}")
 
-def initialize_random_solution(N: int, n_partitions: int, v: np.ndarray, seed: int) -> np.ndarray:
+def validate_initial_condition(x0: np.ndarray, v: np.ndarray, n_partitions: int, logger=None) -> bool:
     """
-    Initialize a random solution with proper normalization and area constraints.
+    Validate that an initial condition satisfies the partition and area constraints.
+    
+    Args:
+        x0: Initial condition vector
+        v: Vector of mass matrix column sums
+        n_partitions: Number of partitions
+        logger: Optional logger for output
+        
+    Returns:
+        True if constraints are satisfied, False otherwise
+    """
+    N = len(v)
+    phi = x0.reshape(N, n_partitions)
+    
+    # Check partition constraints (row sums should be 1)
+    row_sums = np.sum(phi, axis=1)
+    row_violations = np.abs(row_sums - 1.0)
+    max_row_violation = np.max(row_violations)
+    avg_row_violation = np.mean(row_violations)
+    
+    # Check area constraints (equal areas)
+    area_sums = v @ phi
+    target_area = np.sum(v) / n_partitions
+    area_violations = np.abs(area_sums - target_area)
+    max_area_violation = np.max(area_violations)
+    avg_area_violation = np.mean(area_violations)
+    
+    # Check bounds (should be in [0, 1])
+    min_val = np.min(phi)
+    max_val = np.max(phi)
+    bounds_violation = max(0, -min_val, max_val - 1)
+    
+    if logger:
+        logger.info(f"Initial condition validation:")
+        logger.info(f"  Partition constraints: max violation = {max_row_violation:.2e}, avg violation = {avg_row_violation:.2e}")
+        logger.info(f"  Area constraints: max violation = {max_area_violation:.2e}, avg violation = {avg_area_violation:.2e}")
+        logger.info(f"  Bounds: min = {min_val:.6f}, max = {max_val:.6f}")
+    
+    # Consider it valid if violations are small
+    tol = 1e-6
+    is_valid = (max_row_violation < tol and max_area_violation < tol and bounds_violation < tol)
+    
+    if logger:
+        if is_valid:
+            logger.info(f"  ✓ Initial condition is feasible")
+        else:
+            logger.warning(f"  ✗ Initial condition has constraint violations")
+    
+    return is_valid
+
+def check_analytic_vs_fd_gradient(optimizer, x0, logger=None, eps=1e-6, n_check=10):
+    """
+    Numerically check analytic gradients against finite-difference gradients at a feasible point.
+    Args:
+        optimizer: Optimizer object with compute_energy and compute_gradient methods
+        x0: Feasible point (1D array)
+        logger: Optional logger for output
+        eps: Finite-difference step size
+        n_check: Number of entries to print for comparison
+    """
+    def finite_difference_gradient(f, x, eps=1e-6):
+        grad = np.zeros_like(x)
+        for i in range(len(x)):
+            x1 = x.copy()
+            x2 = x.copy()
+            x1[i] += eps
+            x2[i] -= eps
+            grad[i] = (f(x1) - f(x2)) / (2 * eps)
+        return grad
+
+    analytic_grad = optimizer.compute_gradient(x0)
+    fd_grad = finite_difference_gradient(optimizer.compute_energy, x0, eps=eps)
+    diff = np.linalg.norm(analytic_grad - fd_grad)
+    max_abs_diff = np.max(np.abs(analytic_grad - fd_grad))
+    if logger:
+        logger.info(f"Norm of difference between analytic and finite-difference gradient: {diff:.2e}")
+        logger.info(f"Max abs diff: {max_abs_diff:.2e}")
+        logger.info(f"Analytic grad (first {n_check}): {analytic_grad[:n_check]}")
+        logger.info(f"FD grad (first {n_check}): {fd_grad[:n_check]}")
+    else:
+        print(f"Norm of difference between analytic and finite-difference gradient: {diff:.2e}")
+        print(f"Max abs diff: {max_abs_diff:.2e}")
+        print(f"Analytic grad (first {n_check}): {analytic_grad[:n_check]}")
+        print(f"FD grad (first {n_check}): {fd_grad[:n_check]}")
+    return diff, max_abs_diff
+
+def initialize_random_solution_with_projection(N: int, n_partitions: int, v: np.ndarray, seed: int, projection_max_iter: int = 100) -> np.ndarray:
+    """
+    Initialize a random solution using the paper's orthogonal projection algorithm.
     
     Args:
         N: Number of vertices in the mesh
         n_partitions: Number of partitions
         v: Vector of mass matrix column sums
         seed: Random seed for reproducibility
+        projection_max_iter: Maximum iterations for orthogonal projection
         
     Returns:
         Initialized solution vector x0
@@ -197,20 +287,38 @@ def initialize_random_solution(N: int, n_partitions: int, v: np.ndarray, seed: i
     np.random.seed(seed)
     x0 = np.random.rand(N * n_partitions)
     
-    # Project/normalize x0
-    x0_reshaped = x0.reshape(N, n_partitions)
-    x0_reshaped = np.clip(x0_reshaped, 0, 1)
-    row_sums = np.sum(x0_reshaped, axis=1, keepdims=True)
-    x0_reshaped = x0_reshaped / np.maximum(row_sums, 1e-10)
+    # Reshape to matrix form
+    A = x0.reshape(N, n_partitions)
     
-    # Scale to satisfy area constraints
-    target_area = np.sum(v) / n_partitions
-    current_areas = v @ x0_reshaped
-    area_scales = target_area / np.maximum(current_areas, target_area/10)
-    for i in range(n_partitions):
-        x0_reshaped[:, i] *= area_scales[i]
+    # Define constraints
+    c = np.ones(n_partitions)  # Row sums should be 1
+    d = np.sum(v) / n_partitions * np.ones(n_partitions)  # Equal areas
     
-    return x0_reshaped.flatten()
+    # Apply orthogonal projection
+    A_projected = orthogonal_projection_iterative(
+        A, c, d, v, 
+        max_iter=projection_max_iter,
+        tol=1e-8
+    )
+    
+    return A_projected.flatten()
+
+def initialize_random_solution(N: int, n_partitions: int, v: np.ndarray, seed: int, projection_max_iter: int = 100) -> np.ndarray:
+    """
+    Initialize a random solution with proper normalization and area constraints.
+    Now uses the iterative orthogonal projection algorithm from the paper.
+    
+    Args:
+        N: Number of vertices in the mesh
+        n_partitions: Number of partitions
+        v: Vector of mass matrix column sums
+        seed: Random seed for reproducibility
+        projection_max_iter: Maximum iterations for orthogonal projection
+        
+    Returns:
+        Initialized solution vector x0
+    """
+    return initialize_random_solution_with_projection(N, n_partitions, v, seed, projection_max_iter)
 
 def optimize_partition(config, solution_dir=None):
     """
@@ -290,20 +398,36 @@ def optimize_partition(config, solution_dir=None):
                     logger.error(f"Failed to load/interpolate initial condition: {e}")
                     if getattr(config, 'allow_random_fallback', True):
                         logger.info("Falling back to random initialization")
-                        x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
+                        logger.info(f"Creating random initial condition using orthogonal projection (max_iter={config.projection_max_iter})")
+                        x0 = initialize_random_solution(N, config.n_partitions, v, config.seed, config.projection_max_iter)
+                        validate_initial_condition(x0, v, config.n_partitions, logger)
                     else:
                         raise RuntimeError("Failed to load initial condition and random fallback is disabled")
             else:
                 # Original random initialization code
-                x0 = initialize_random_solution(N, config.n_partitions, v, config.seed)
+                logger.info(f"Creating random initial condition using orthogonal projection (max_iter={config.projection_max_iter})")
+                x0 = initialize_random_solution(N, config.n_partitions, v, config.seed, config.projection_max_iter)
+                validate_initial_condition(x0, v, config.n_partitions, logger)
         else:
             if config.n_theta_increment == 0 and config.n_phi_increment == 0:
                 # Mesh is unchanged, just copy the solution
                 x0 = results[-1]['x_opt'].copy()
             else:
                 # Mesh changed, interpolate
+                logger.info("Interpolating solution from previous mesh to new mesh")
                 x0 = interpolate_solution(results[-1]['x_opt'], results[-1]['mesh'], mesh)
-        
+                # Project to feasible region after mesh refinement
+                logger.info(f"Projecting interpolated solution to feasible region (max_iter={config.projection_max_iter})")
+                A = x0.reshape(N, config.n_partitions)
+                c = np.ones(config.n_partitions)
+                d = np.sum(v) / config.n_partitions * np.ones(config.n_partitions)
+                A_projected = orthogonal_projection_iterative(A, c, d, v, max_iter=config.projection_max_iter, tol=1e-8)
+                x0 = A_projected.flatten()
+                validate_initial_condition(x0, v, config.n_partitions, logger)
+        # Gradient check (only if using analytic gradients)
+        if use_analytic:
+            logger.info("Checking analytic vs finite-difference gradients at projected feasible point...")
+            check_analytic_vs_fd_gradient(optimizer, x0, logger=logger, eps=1e-6, n_check=10)
         # Determine if this is a mesh refinement step
         is_mesh_refinement = (
             #(level == 0 and not config.use_custom_initial_condition) or  # Only log initial state for random initialization at level 0

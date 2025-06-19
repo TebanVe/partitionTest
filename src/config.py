@@ -36,6 +36,8 @@ class Config:
         self.use_custom_initial_condition = False  # Whether to use a custom initial condition
         self.initial_condition_path = None  # Path to the .h5 file containing the initial condition
         self.allow_random_fallback = True  # Whether to allow random initialization as fallback
+        # Projection parameters for initial condition creation
+        self.projection_max_iter = 100  # Maximum iterations for orthogonal projection
         # Logging parameters
         self.log_frequency = 50  # How often to log optimization progress
         self.use_last_valid_iterate = True  # Whether to use last valid iterate on unsuccessful termination

@@ -82,6 +82,8 @@ For local development and testing, you can run the scripts directly. There are t
    use_custom_initial_condition: false  # Set to true to use a custom initial condition
    initial_condition_path: null  # Path to the .h5 file containing the initial condition
    allow_random_fallback: true  # Whether to allow random initialization as fallback when loading fails
+   # Projection parameters for initial condition creation
+   projection_max_iter: 100  # Maximum iterations for orthogonal projection algorithm
    ```
 
    **Note:**
@@ -92,6 +94,20 @@ For local development and testing, you can run the scripts directly. There are t
    - The `use_last_valid_iterate` parameter controls whether to use the last valid point if optimization fails.
    - The mesh refinement criteria parameters (`refine_patience`, `refine_delta_energy`, etc.) are used for logging and advanced control.
    - The `allow_random_fallback` parameter controls whether to fall back to random initialization when loading or interpolating a custom initial condition fails. If set to `false`, the program will raise an error instead.
+   - The `projection_max_iter` parameter controls the maximum number of iterations for the orthogonal projection algorithm used to create feasible initial conditions. This algorithm ensures that both partition constraints (row sums = 1) and area constraints (equal areas) are satisfied simultaneously.
+
+   ### Initial Condition Creation with Orthogonal Projection
+
+   The project now uses the iterative orthogonal projection algorithm from the paper "Partitions of Minimal Length on Manifolds" to create feasible initial conditions. This algorithm:
+
+   - **Ensures feasibility**: Creates initial conditions that satisfy both partition and area constraints
+   - **Improves convergence**: Starting from feasible points helps SLSQP optimization converge faster
+   - **Reduces local minima**: Better initial conditions reduce the likelihood of getting stuck in poor local minima
+   - **Mathematically rigorous**: Based on orthogonal projection theory
+
+   The `projection_max_iter` parameter controls the maximum number of iterations for this algorithm. A value of 100 is typically sufficient, but you can adjust it if needed:
+   - **Lower values (50-100)**: Faster initialization, suitable for most cases
+   - **Higher values (200-500)**: More precise constraint satisfaction, useful for difficult cases
 
    ### Using External Solution as Initial Condition
 
