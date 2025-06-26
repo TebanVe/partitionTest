@@ -38,6 +38,12 @@ class Config:
         self.allow_random_fallback = True  # Whether to allow random initialization as fallback
         # Projection parameters for initial condition creation
         self.projection_max_iter = 100  # Maximum iterations for orthogonal projection
+        # Matrix testing parameters
+        self.test_barycentric = True  # Test barycentric matrix construction method
+    
+        self.test_stable = True  # Test stable matrix construction method
+        self.test_stable_fem = True  # Test stable FEM matrix construction method
+        self.matrix_test_output_dir = "matrix_test_results"  # Output directory for matrix test results
         # Logging parameters
         self.log_frequency = 50  # How often to log optimization progress
         self.use_last_valid_iterate = True  # Whether to use last valid iterate on unsuccessful termination
@@ -54,6 +60,8 @@ class Config:
                         v = float(v)
                     elif isinstance(default_value, int) and v is not None:
                         v = int(v)
+                    elif isinstance(default_value, bool) and v is not None:
+                        v = bool(v)
                     setattr(self, k, v)
                     print(f"  {k}: {old_value} -> {v}")
                 else:

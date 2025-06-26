@@ -369,7 +369,7 @@ def optimize_partition(config, solution_dir=None):
             r=config.r
         )
         logger.info(f"Mesh created with size: {mesh.n_theta}x{mesh.n_phi}")
-        M, K = mesh.compute_matrices()
+        M, K = mesh.compute_matrices_stable_fem()
         v = np.sum(M.toarray(), axis=0)
         mesh_stats = mesh.mesh_statistics
         epsilon = mesh_stats['avg_triangle_side']

@@ -7,17 +7,17 @@ r: 0.6
 lambda_penalty: 0.01
 max_iter: 2000
 # SLSQP parameters
-tol: 1e-6
+tol: 1e-8
 slsqp_eps: 1e-8
 slsqp_disp: false
 # Mesh refinement parameters
-refinement_levels: 1
+refinement_levels: 2
 n_theta_increment: 2
 n_phi_increment: 1
 # Optimization parameters
-use_analytic: true
+use_analytic: false
 starget: null
-seed: 491
+seed: 213
 # Mesh refinement convergence criteria
 refine_patience: 30
 refine_delta_energy: 1e-3
@@ -29,6 +29,11 @@ initial_condition_path: null  # Path to the .h5 file containing the initial cond
 allow_random_fallback: true  # Whether to allow random initialization as fallback
 # Projection parameters for initial condition creation
 projection_max_iter: 100  # Maximum iterations for orthogonal projection
+# Matrix testing parameters
+test_barycentric: true  # Test barycentric matrix construction method
+test_stable: true  # Test stable matrix construction method
+test_stable_fem: true  # Test stable FEM matrix construction method
+matrix_test_output_dir: "matrix_test_results"  # Output directory for matrix test results
 # Logging parameters
 log_frequency: 50  # How often to log optimization progress (in iterations)
 use_last_valid_iterate: true  # Whether to use last valid iterate on unsuccessful termination 
