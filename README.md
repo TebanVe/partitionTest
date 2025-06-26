@@ -92,7 +92,7 @@ For local development and testing, you can run the scripts directly. There are t
      - First level with random initialization
      - Levels where mesh resolution changes
    - The `use_last_valid_iterate` parameter controls whether to use the last valid point if optimization fails.
-   - The mesh refinement criteria parameters (`refine_patience`, `refine_delta_energy`, etc.) are used for logging and advanced control.
+   - The mesh refinement criteria parameters (`refine_patience`, `refine_delta_energy`, etc.) are used for logging and advanced control on triggering the refiniment.
    - The `allow_random_fallback` parameter controls whether to fall back to random initialization when loading or interpolating a custom initial condition fails. If set to `false`, the program will raise an error instead.
    - The `projection_max_iter` parameter controls the maximum number of iterations for the orthogonal projection algorithm used to create feasible initial conditions. This algorithm ensures that both partition constraints (row sums = 1) and area constraints (equal areas) are satisfied simultaneously.
 
@@ -101,13 +101,9 @@ For local development and testing, you can run the scripts directly. There are t
    The project now uses the iterative orthogonal projection algorithm from the paper "Partitions of Minimal Length on Manifolds" to create feasible initial conditions. This algorithm:
 
    - **Ensures feasibility**: Creates initial conditions that satisfy both partition and area constraints
-   - **Improves convergence**: Starting from feasible points helps SLSQP optimization converge faster
-   - **Reduces local minima**: Better initial conditions reduce the likelihood of getting stuck in poor local minima
-   - **Mathematically rigorous**: Based on orthogonal projection theory
+   - **Improves convergence**: Starting from feasible points might help the SLSQP optimization to converge faster
 
-   The `projection_max_iter` parameter controls the maximum number of iterations for this algorithm. A value of 100 is typically sufficient, but you can adjust it if needed:
-   - **Lower values (50-100)**: Faster initialization, suitable for most cases
-   - **Higher values (200-500)**: More precise constraint satisfaction, useful for difficult cases
+   The `projection_max_iter` parameter controls the maximum number of iterations for this algorithm. 
 
    ### Using External Solution as Initial Condition
 
@@ -312,7 +308,3 @@ from src import ContourAnalyzer, plot_torus_with_contours_pyvista
 -   `parameters/`: Contains configuration files
     -   `input.yaml`: Default input parameters
 -   `results/`: Directory for output files and results
-
-## License
-
-MIT License 
