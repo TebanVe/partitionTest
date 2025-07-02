@@ -369,7 +369,7 @@ def optimize_partition(config, solution_dir=None):
             r=config.r
         )
         logger.info(f"Mesh created with size: {mesh.n_theta}x{mesh.n_phi}")
-        M, K = mesh.compute_matrices_stable_fem()
+        M, K = mesh.compute_matrices()
         v = np.sum(M.toarray(), axis=0)
         mesh_stats = mesh.mesh_statistics
         epsilon = mesh_stats['avg_triangle_side']
@@ -427,7 +427,7 @@ def optimize_partition(config, solution_dir=None):
         # Gradient check (only if using analytic gradients)
         if use_analytic:
             logger.info("Checking analytic vs finite-difference gradients at projected feasible point...")
-            check_analytic_vs_fd_gradient(optimizer, x0, logger=logger, eps=1e-6, n_check=10)
+            check_analytic_vs_fd_gradient(optimizer, x0, logger=logger, eps=1e-6, n_check=20)
         # Determine if this is a mesh refinement step
         is_mesh_refinement = (
             #(level == 0 and not config.use_custom_initial_condition) or  # Only log initial state for random initialization at level 0

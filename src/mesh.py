@@ -109,12 +109,12 @@ class TorusMesh:
         M = sparse.lil_matrix((n_vertices, n_vertices))
         K = sparse.lil_matrix((n_vertices, n_vertices))
         
-        def compute_tangential_gradients_barycentric(p1, p2, p3):
+        def compute_tangential_gradients(p1, p2, p3):
             """Compute tangential gradients using barycentric coordinates."""
             # Compute triangle normal and area
             edge1 = p2 - p1
             edge2 = p3 - p1
-            normal = np.cross(edge1, edge2)
+            normal = np.cross(edge2, edge1)
             area = 0.5 * np.linalg.norm(normal)
             normal = normal / np.linalg.norm(normal)
             
@@ -136,7 +136,7 @@ class TorusMesh:
             v1, v2, v3 = self.vertices[t]
             
             # Compute mass matrix (same as before)
-            area = 0.5 * np.linalg.norm(np.cross(v2-v1, v3-v1))
+            area = 0.5 * np.linalg.norm(np.cross(v3-v1, v2-v1))
             local_mass = (area / 12) * np.array([
                 [2, 1, 1],
                 [1, 2, 1],
@@ -149,7 +149,7 @@ class TorusMesh:
                     M[vi, vj] += local_mass[i, j]
             
             # Compute stiffness matrix using barycentric gradients
-            gradients, area = compute_tangential_gradients_barycentric(v1, v2, v3)
+            gradients, area = compute_tangential_gradients(v1, v2, v3)
             
             # Construct local stiffness matrix
             K_local = np.zeros((3, 3))
@@ -190,7 +190,7 @@ class TorusMesh:
             # Compute triangle normal and area
             edge1 = p2 - p1
             edge2 = p3 - p1
-            normal = np.cross(edge1, edge2)
+            normal = np.cross(edge2, edge1)
             area = 0.5 * np.linalg.norm(normal)
             
             # Normalize normal vector
@@ -290,7 +290,7 @@ class TorusMesh:
             # Compute triangle normal and area
             edge1 = p2 - p1
             edge2 = p3 - p1
-            normal = np.cross(edge1, edge2)
+            normal = np.cross(edge2, edge1)
             area = 0.5 * np.linalg.norm(normal)
             
             # Handle degenerate triangles
