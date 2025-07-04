@@ -118,7 +118,7 @@ class SLSQPOptimizer:
             # Interface term
             phi_i = phi[:, i]
             interface_vec = phi_i**2 * (1 - phi_i)**2
-            grad_interface = (2/self.epsilon) * (self.M @ (interface_vec * (1 - 2*phi_i)))
+            grad_interface = (2/self.epsilon) * (self.M @ interface_vec) * (1 - 2*phi_i)
             
             # Penalty term
             mean_i = np.sum(self.v * phi_i) / self.total_area
