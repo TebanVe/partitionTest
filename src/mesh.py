@@ -66,35 +66,7 @@ class TorusMesh:
                 triangles.append([current, next_theta, next_phi])
                 triangles.append([next_theta, next_both, next_phi])
                 
-        return np.array(triangles)
-    
-    def get_vertex_neighbors(self, vertex_idx):
-        """
-        Get the indices of neighboring vertices for a given vertex.
-        
-        Parameters:
-        -----------
-        vertex_idx : int
-            Index of the vertex
-            
-        Returns:
-        --------
-        list
-            List of neighboring vertex indices
-        """
-        i = vertex_idx // self.n_phi
-        j = vertex_idx % self.n_phi
-        
-        neighbors = []
-        # Add neighbors in theta direction
-        neighbors.append(((i - 1) % self.n_theta) * self.n_phi + j)
-        neighbors.append(((i + 1) % self.n_theta) * self.n_phi + j)
-        # Add neighbors in phi direction
-        neighbors.append(i * self.n_phi + ((j - 1) % self.n_phi))
-        neighbors.append(i * self.n_phi + ((j + 1) % self.n_phi))
-        
-        return neighbors
-    
+        return np.array(triangles)  
     
     def compute_matrices(self):
         """
